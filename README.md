@@ -1,8 +1,6 @@
 PyProximity
 ===========
 
-[TOC]
-
 Proxy Python objects via ZeroMQ and JSON
 
 ## Introduction
