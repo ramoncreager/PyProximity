@@ -107,6 +107,18 @@ class MoreInteresting:
         time.sleep(delay)
         return delay
 
+    def bad_delay(self, delay):
+        """This is like 'long_delay()', except that it expects a
+        datetime.timedelta(). This demonstrates the limitations of using
+        the built-in JSON encoding in PyZMQ. Calling this function with
+        a delay as a timedelta will generate a TypeError exception
+        complaining that timedelta is not JSON serializable.
+
+        """
+        print "sleeping for", delay.seconds, "seconds"
+        time.sleep(delay.seconds)
+        return delay
+
     def complicated_data(self, data):
         """
         complicated_data(data)
