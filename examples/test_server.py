@@ -83,8 +83,6 @@ class Animals:
 class MoreInteresting:
     def add_two(self, x, y):
         """
-        add_two(x, y)
-
         Adds two values together.
 
         x: first value
@@ -101,8 +99,6 @@ class MoreInteresting:
 
     def long_delay(self, delay):
         """
-        long_delay(delay)
-
         waits 'delay' seconds before returning.
 
         delay: the delay in seconds
@@ -137,10 +133,16 @@ class MoreInteresting:
         return retval
 
 def signal_handler(signal, frame):
+    """
+    Called when program interrupted by SIGINT
+    """
     global proxy
     proxy.quit_loop()
 
 def get_ephemeral_port():
+    """
+    Obtains a random TCP port number in the ephemeral range.
+    """
     f=open('/proc/sys/net/ipv4/ip_local_port_range', 'r')
     lines = f.readlines()
     f.close()
@@ -149,8 +151,17 @@ def get_ephemeral_port():
 
 proxy = None
 
+# The proxy server, can proxy many classes.
 def main_loop():
-    # The proxy server, can proxy many classes.
+    """Runs the server. The ZMQJSONProxyServer uses two sockets, a zmq.REP
+    socket that listens on the provided URL, and a zmq.PULL socket that
+    listens on a local inproc URL that is used to control the
+    ZMQJSONProxyServer.run_loop(). That function will return when the
+    PULL socket receives a "QUIT", and that happens when the signal
+    handler calls ZMQJSONProxyServer.quit_loop().
+
+    """
+
     global proxy
 
     ctx = zmq.Context()
