@@ -39,6 +39,19 @@ A simple example will serve to illustrate this library. Supposing, on the server
           def div_two(self, x, y):
               print "returning %d / %d = %d" % (x, y, x / y)
               return x / y
+              
+          def delay(self, td):
+              """
+              sleeps for the interval specified in td.
+              
+              td: a datetime.timedelta
+              
+              NOTE: This function will cause a TypeError exception, because timedelta
+              is not JSON serializable. It is here to illustrate the limitations of
+              the proxy code.
+              """
+              sleep(td.seconds)
+              return "slept for %d seconds" % (td.seconds)
 
 You wish to call `add_two` and `div_two` from an entirely separate Python session on perhaps a different host. With the ZMQJSONProxy you can easily do so. On the server machine, in an interactive Python session, enter the following code (assuming class Foo above is already defined):
 
@@ -63,9 +76,9 @@ The server is now running on TCP port 5555. Calling the server from a client is 
 At this point you can examine the proxy class 'foo' and see what's there, using iPython's tab completion for example:
 
       In [2]: foo.
-      foo.add_two  foo.div_two
+      foo.add_two  foo.delay   foo.div_two
      
-Our two functions are there!
+Our three functions are there!
 
 You may examine the docstrings:
 
@@ -240,6 +253,6 @@ Installation is simplistic at this point: Simply place `ZMQJSONProxy.py` somewhe
 
   * Provide the option of exposing class attributes as well as class methods
   * Provide a regular expressions filter when exposing elements
-  * Provide means to add custom JSON encodings.
+  * Switch to [msgpack](http://msgpack.org) instead of built in JSON serialization. This will improve performance and allow serializing more complex objects.
   * Cleaner exception handling
  
