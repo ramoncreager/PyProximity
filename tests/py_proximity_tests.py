@@ -1,6 +1,6 @@
 ######################################################################
 #
-#  ZMQJSONProxy_tests.py -- Unit tests for the ZMQJSONProxy classes.
+#  py_proximity_tests.py -- Unit tests for the PyProximity classes.
 #
 #  Preparing for test:
 #
@@ -47,7 +47,7 @@
 
 import threading
 import zmq
-from ZMQJSONProxy import ZMQJSONProxyServer, ZMQJSONProxyClient
+from py_proximity import PyProximityServer, PyProximityClient, _send_msgpack, _recv_msgpack
 from nose import with_setup
 import random
 
@@ -90,7 +90,7 @@ class Foo:
 
     def complicated_data(self, data):
         """data is expected to be a dictionary containing the following:
-           the_string: a list of strings, to be concatenated the_ints: a
+           the_strings: a list of strings, to be concatenated the_ints: a
            list of strings, to be summed, and to have each element
            multiplied by two.
 
@@ -129,7 +129,7 @@ def setup_zmq_server():
     while fail:
         try:
             url = "tcp://127.0.0.1:" + str(get_ephemeral_port())
-            proxy = ZMQJSONProxyServer(ctx, url)
+            proxy = PyProximityServer(ctx, url)
             fail = False
         except ZMQError:
             pass
@@ -166,43 +166,43 @@ def test_ZMQ_Proxy_Interface():
     test_sock = ctx.socket(zmq.REQ)
     test_sock.connect(url)
     msg = {"name": "foo", "proc": "cat", "args": [], "kwargs": {}}
-    test_sock.send_json(msg)
-    cat_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    cat_ret = _recv_msgpack(test_sock)
 
     msg = {"name": "foo", "proc": "dog", "args": [], "kwargs": {}}
-    test_sock.send_json(msg)
-    dog_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    dog_ret = _recv_msgpack(test_sock)
 
     msg = {"name": "foo", "proc": "frog", "args": [], "kwargs": {}}
-    test_sock.send_json(msg)
-    frog_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    frog_ret = _recv_msgpack(test_sock)
 
     # Test to ensure 'list_methods' works. Should return method names,
     # and doc strings:
     msg = {"name": "foo", "proc": "list_methods", "args": [], "kwargs": {}}
-    test_sock.send_json(msg)
-    list_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    list_ret = _recv_msgpack(test_sock)
 
     # Test exception handling; in this case, we're asking for a function
     # in 'bar', which doesn't exist.
     msg = {"name": "bar", "proc": "cat", "args": [], "kwargs": {}}
-    test_sock.send_json(msg)
-    except_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    except_ret = _recv_msgpack(test_sock)
 
     # Test positional arguments. 'add_two' expects two arguments.
     msg = {"name": "foo", "proc": "add_two", "args": [2, 2], "kwargs": {}}
-    test_sock.send_json(msg)
-    add_listargs_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    add_listargs_ret = _recv_msgpack(test_sock)
 
     # Test keyword arguments. 'add_two' expects two arguments, 'x', 'y'.
     msg = {"name": "foo", "proc": "add_two", "args": [], "kwargs": {"x": 2, "y": 3}}
-    test_sock.send_json(msg)
-    add_kwargs_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    add_kwargs_ret = _recv_msgpack(test_sock)
 
     # Test mixed args: first is bound positionally, second is keyword.
     msg = {"name": "foo", "proc": "add_two", "args": [3], "kwargs": {"y": 3}}
-    test_sock.send_json(msg)
-    add_mixedargs_ret = test_sock.recv_json()
+    _send_msgpack(test_sock, msg)
+    add_mixedargs_ret = _recv_msgpack(test_sock)
 
     assert cat_ret == "meow"
     assert dog_ret == "woof"
@@ -238,7 +238,7 @@ def test_ZMQ_proxy_client():
     as if they were local.
     """
 
-    foo_proxy = ZMQJSONProxyClient(ctx, 'foo', url)
+    foo_proxy = PyProximityClient(ctx, 'foo', url)
 
     assert 'Cat process' in foo_proxy.cat.__doc__
     cat_ret = foo_proxy.cat()

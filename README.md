@@ -1,7 +1,7 @@
 PyProximity
 ===========
 
-Proxy Python objects via ZeroMQ and JSON
+Proxy Python objects via ZeroMQ and MessagePack
 
 ## Introduction
 
@@ -9,7 +9,7 @@ A library that implements a simple RPC mechanism for Python objects. The interfa
 
 Its features are:
 
-  * Lightweight; uses JSON over 0MQ
+  * Lightweight; uses MessagePack over 0MQ
   * very thin client
   * automatic discovery of server interfaces, including exported docstrings
   * easily proxy 3d party classes
@@ -24,30 +24,30 @@ Example uses are to allow a central script to communicate with and control one o
 A simple example will serve to illustrate this library. Supposing, on the server machine, you have this class:
 
       class Foo:
-          def add_two(self, x, y):
+          def sub_two(self, x, y):
               """
-              Adds two values together.
+              Subtracts y from x.
 
               x: first value
               y: second value
 
-              returns: x + y
+              returns: x - y
               """
-              print "returning %d + %d = %d" % (x, y, x + y)
-              return x + y
+              print "returning %s - %s = %s" % (str(x), str(y), str(x - y))
+              return x - y
 
           def div_two(self, x, y):
               print "returning %d / %d = %d" % (x, y, x / y)
               return x / y
 
-You wish to call `add_two` and `div_two` from an entirely separate Python session on perhaps a different host. With the ZMQJSONProxy you can easily do so. On the server machine, in an interactive Python session, enter the following code (assuming class Foo above is already defined):
+You wish to call `sub_two` and `div_two` from an entirely separate Python session on perhaps a different host. With the PyProximity you can easily do so. On the server machine, in an interactive Python session, enter the following code (assuming class Foo above is already defined):
 
       import zmq
-      from ZMQJSONProxy import ZMQJSONProxyServer
+      from py_proximity import PyProximityServer
 
       ctx = zmq.Context()
       url = "tcp://0.0.0.0:5555"
-      server = ZMQJSONProxyServer(ctx, url)
+      server = PyProximityServer(ctx, url)
       foo = Foo()
       server.expose("foo", foo)
       server.run_loop()
@@ -55,26 +55,26 @@ You wish to call `add_two` and `div_two` from an entirely separate Python sessio
 The server is now running on TCP port 5555. Calling the server from a client is straightforward. Let's assume the server is on the host named 'colossus':
 
       import zmq
-      from ZMQJSONProxy import ZMQJSONProxyClient
+      from py_proximity import PyProximityClient
       ctx = zmq.Context()
       URL = "tcp://colossus:5555"
-      foo = ZMQJSONProxyClient(ctx, 'foo', URL)
+      foo = PyProximityClient(ctx, 'foo', URL)
       
 At this point you can examine the proxy class 'foo' and see what's there, using iPython's tab completion for example:
 
       In [2]: foo.
       foo.add_two  foo.div_two
      
-Our two functions are there!
+Our three functions are there!
 
 You may examine the docstrings:
 
       In [2]: foo.add_two?
       Type:       instancemethod
       Base Class: <type 'instancemethod'>
-      String Form:<bound method ?.new_method of <ZMQJSONProxy.ZMQJSONProxyClient object at 0x1ab1ed0>>
+      String Form:<bound method ?.new_method of <py_proximity.PyProximityClient object at 0x1ab1ed0>>
       Namespace:  Interactive
-      File:       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/ZMQJSONProxy.py
+      File:       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/py_proximity.py
       Definition: foo.add_two(self, *args, **kwargs)
       Docstring:
       usage: add_two(x, y)
@@ -91,9 +91,9 @@ Note that the function signature (Definition:) will not match that on the server
       In [3]: foo.div_two?
       Type:       instancemethod
       Base Class: <type 'instancemethod'>
-      String Form:<bound method ?.new_method of <ZMQJSONProxy.ZMQJSONProxyClient object at 0x1ab1ed0>>
+      String Form:<bound method ?.new_method of <py_proximity.PyProximityClient object at 0x1ab1ed0>>
       Namespace:  Interactive
-      File:       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/ZMQJSONProxy.py
+      File:       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/py_proximity.py
       Definition: foo.div_two(self, *args, **kwargs)
       Docstring: usage: div_two(x, y)
 
@@ -102,15 +102,15 @@ The functions may be called just as if they were local:
       In [4]: foo.div_two(500, 2)
       Out[4]: 250
 
-So far we've exported a very simple class that we wrote ourselves. But this can work as well with 3d party classes (subject to JSON encoding restrictions; see section on Limitations). Let's assume a server controlling an FPGA roach via the KATCP library, with a remote client (perhaps on a laptop) which does not have the KATCP library in the Python environment. On the server:
+So far we've exported a very simple class that we wrote ourselves. But this can work as well with 3d party classes (subject to msgpack encoding restrictions; see section on Limitations). Let's assume a server controlling an FPGA roach via the KATCP library, with a remote client (perhaps on a laptop) which does not have the KATCP library in the Python environment. On the server:
 
       import zmq
-      from ZMQJSONProxy import ZMQJSONProxyServer
+      from py_proximity import PyProximityServer
       from corr import katcp_wrapper
 
       ctx = zmq.Context()
       url = "tcp://0.0.0.0:5555"
-      server = ZMQJSONProxyServer(ctx, url)
+      server = PyProximityServer(ctx, url)
       srbs = katcp_wrapper.FpgaClient("srbsr2-1")
       server.expose("srbs", srbs)
       server.run_loop()
@@ -118,10 +118,10 @@ So far we've exported a very simple class that we wrote ourselves. But this can 
 Now, on a different host, in the client:
 
       import zmq
-      from ZMQJSONProxy import ZMQJSONProxyClient
+      from py_proximity import PyProximityClient
       ctx = zmq.Context()
       URL = "tcp://colossus:5555"
-      srbs = ZMQJSONProxyClient(ctx, 'srbs', URL)
+      srbs = PyProximityClient(ctx, 'srbs', URL)
       
 Using iPython we can see that 'srbs' provides all of the 'public' (non leading underscore)  methods from class `katcp_wrapper.FpgaClient` (even though we have not imported it and may not even have access to it):
 
@@ -148,9 +148,9 @@ and that each of these functions may be explored by looking at their docstring:
       In [5]: srbs.tap_start?
       Type:       instancemethod
       Base Class: <type 'instancemethod'>
-      String Form:<bound method ?.new_method of <ZMQJSONProxy.ZMQJSONProxyClient object at 0x2a6f4d0>>
+      String Form:<bound method ?.new_method of <py_proximity.PyProximityClient object at 0x2a6f4d0>>
       Namespace:  Interactive
-      File:       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/ZMQJSONProxy.py
+      File:       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/py_proximity.py
       Definition: srbs.tap_start(self, *args, **kwargs)
       Docstring:
       usage: tap_start(tap_dev, device, mac, ip, port)
@@ -191,9 +191,9 @@ and called as if local:
 
 Just like the real katcp_wrapper.FpgaClient.listdev() on the server, our proxy also returns a list of register names.
 
-Finally, note that ZMQJSONProxyServer supports exposing multiple interface on one server instance. If one wished to expose `foo` and `srbs` on the same server, just call `expose()` as many times as needed:
+Finally, note that PyProximityServer supports exposing multiple interface on one server instance. If one wished to expose `foo` and `srbs` on the same server, just call `expose()` as many times as needed:
 
-      server = ZMQJSONProxyServer(ctx, url)
+      server = PyProximityServer(ctx, url)
       srbs = katcp_wrapper.FpgaClient("srbsr2-1")
       foo = Foo()
       server.expose("foo", foo)
@@ -202,44 +202,43 @@ Finally, note that ZMQJSONProxyServer supports exposing multiple interface on on
 
 ## Exceptions
 
-The class handles exceptions at the server by packaging the remote traceback into a list and returning it to the client. The client will then throw a `ZMQJSONProxyException` with this list as the message:
+The class handles exceptions at the server by packaging the remote traceback into a list and returning it to the client. The client will then throw a `PyProximityException` with this list as the message:
 
       In [13]: foo.div_two(2, 0)
       ---------------------------------------------------------------------------
-      ZMQJSONProxyException                     Traceback (most recent call last)
+      PyProximityException                     Traceback (most recent call last)
       /home/sandboxes/rcreager/ZMQ/pyzmqproxy/<ipython-input-13-c4b22450d183> in <module>()
       ----> 1 foo.div_two(2, 0)
 
-      /home/sandboxes/rcreager/ZMQ/pyzmqproxy/ZMQJSONProxy.pyc in new_method(self, *args, **kwargs)
+      /home/sandboxes/rcreager/ZMQ/pyzmqproxy/py_proximity.pyc in new_method(self, *args, **kwargs)
           369         """
           370         def new_method(self, *args, **kwargs):
       --> 371             return self._do_the_deed(name, *args, **kwargs)
           372         return new_method
           373
 
-      /home/sandboxes/rcreager/ZMQ/pyzmqproxy/ZMQJSONProxy.pyc in _do_the_deed(self, *args, **kwargs)
+      /home/sandboxes/rcreager/ZMQ/pyzmqproxy/py_proximity.pyc in _do_the_deed(self, *args, **kwargs)
           398
           399             if type(repl) == dict and repl.has_key('EXCEPTION'):
-      --> 400                 raise ZMQJSONProxyException(repl['EXCEPTION'])
+      --> 400                 raise PyProximityException(repl['EXCEPTION'])
           401
           402             return repl
 
-      ZMQJSONProxyException: [u'ZeroDivisionError', u'integer division or modulo by zero', [u'  File "ZMQJSONProxy.py", line 137, in dispatch\n    return proc(*args, **kwargs)\n', u'  File "<ipython-input-34-96e5d881cb85>", line 17, in div_two\n    print "returning %d / %d = %d" % (x, y, x / y)\n']]
+      PyProximityException: [u'ZeroDivisionError', u'integer division or modulo by zero', [u'  File "py_proximity.py", line 137, in dispatch\n    return proc(*args, **kwargs)\n', u'  File "<ipython-input-34-96e5d881cb85>", line 17, in div_two\n    print "returning %d / %d = %d" % (x, y, x / y)\n']]
 
 ## Installation
 
-Installation is simplistic at this point: Simply place `ZMQJSONProxy.py` somewhere in your PYTHONPATH. [ZeroMQ](http://zeromq.org) and [PyZMQ](https://github.com/zeromq/pyzmq) must be installed on your system.
+Installation is simplistic at this point: Simply place `py_proximity.py` somewhere in your PYTHONPATH. [ZeroMQ](http://zeromq.org), [PyZMQ](https://github.com/zeromq/pyzmq), and [msgpack-python](https://github.com/msgpack/msgpack-python) must be installed on your system.
 
 ## Limitations
 
   * Currently does not export functions whose names have one or more leading underscores.
   * Only class methods are exposed. Class attributes are not.
-  * Class methods that take or return Python objects for which there is no JSON encoding will not work.
+  * Class methods that take or return Python objects for which there is no msgpack encoding will not work.
   
 ## To Do
 
   * Provide the option of exposing class attributes as well as class methods
   * Provide a regular expressions filter when exposing elements
-  * Switch to [msgpack](http://msgpack.org) instead of built in JSON serialization. This will improve performance and allow serializing more complex objects.
   * Cleaner exception handling
  

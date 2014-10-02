@@ -1,12 +1,12 @@
 import zmq
-from ZMQJSONProxy import ZMQJSONProxyClient
+from py_proximity import PyProximityClient
 ctx = zmq.Context()
 
 URL = ""
 
-ap=ZMQJSONProxyClient(ctx, 'animals', URL)
-ip = ZMQJSONProxyClient(ctx, 'interesting', URL)
-ap.angry = ZMQJSONProxyClient(ctx, 'animals.angry', URL)
+ap=PyProximityClient(ctx, 'animals', URL)
+ip = PyProximityClient(ctx, 'interesting', URL)
+ap.angry = PyProximityClient(ctx, 'animals.angry', URL)
 
 my_dict = {'the_strings': ['foo', 'bar', 'baz'], 'the_ints': [i for i in range(10)]}
 

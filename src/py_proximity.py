@@ -1,6 +1,6 @@
 ######################################################################
 #
-#  ZMQJSONProxy.py -- Implements proxy classes to enable an object to be
+#  py_proximity.py -- Implements proxy classes to enable an object to be
 #  proxied via ZMQ and JSON. Currently only methods are proxied. Methods
 #  that are exported may be called on the proxy class as if they were
 #  local. They even include the original doc strings, and may be called
@@ -15,14 +15,14 @@
 #
 #  On server, assuming a zmq.Context() 'ctx' and a well known url:
 #
-#      proxy = ZMQJSONProxyServer(ctx, url)
+#      proxy = PyProximityServer(ctx, url)
 #      foo = Foo()
 #      proxy.expose("foo", foo)
 #      proxy.run_loop()
 #
 #  On the client (same assumptions):
 #
-#      foo_proxy = ZMQJSONProxyClient(ctx, 'foo', url)
+#      foo_proxy = PyProximityClient(ctx, 'foo', url)
 #      ret = foo_proxy.add_two(2, 2) # ret = 4
 #      ret = foo_proxy.add_two(2, y = 3) # ret = 5
 #      ret = foo_proxy.add_two(y = 3, x = 4) #ret = 7
@@ -60,18 +60,55 @@ import inspect
 import thread
 import time
 import datetime
+import msgpack
 
 try:
     from zmq.error import ZMQError
 except ImportError:
     from zmq.core import ZMQError
 
-class ZMQJSONProxyException(Exception):
+class PyProximityException(Exception):
    def __init__(self, message):
         Exception.__init__(self, message)
 
+def _decode_custom(obj):
+    """Add custom code to decode objects here. If not found, 'obj' is
+       returned as is.
 
-class ZMQJSONProxyServer(object):
+    """
+    # if b'__datetime__' in obj:
+    #     obj = datetime.datetime.strptime(obj["as_str"], "%Y%m%dT%H:%M:%S.%f")
+    # if b'__timedelta__' in obj:
+    #     obj = datetime.timedelta(seconds = obj['total_seconds'])
+    # add more here
+    return obj
+
+def _encode_custom(obj):
+    """Add custom code to encode objects here. If the object is not found
+    the object is returned as is.
+
+    """
+    # if isinstance(obj, datetime.datetime):
+    #     return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
+    # if isinstance(obj, datetime.timedelta):
+    #     return {'__timedelta__': True, 'total_seconds': obj.total_seconds()}
+    return obj
+
+def _send_msgpack(socket, obj, flags = 0):
+    """
+    Sends an object, encoding it with msgpack first.
+    """
+    packed = msgpack.packb(obj, default = _encode_custom)
+    return socket.send(packed, flags = flags)
+
+def _recv_msgpack(socket, flags = 0):
+    """
+    Receives an object, unpacking it with msgpack.
+    """
+    packed = socket.recv(flags)
+    return msgpack.unpackb(packed, object_hook = _decode_custom)
+
+class PyProximityServer(object):
 
     def __init__(self, ctx, URL):
         """
@@ -174,10 +211,10 @@ class ZMQJSONProxyServer(object):
                 exported_funcs.append((ef, docstring))
 
             if self.s:
-                self.s.send_json(exported_funcs)
+                _send_msgpack(self.s, exported_funcs)
         except KeyError, e:
             if self.s:
-                self.s.send_json(["Interface error", str(e)])
+                _send_msgpack(self.s, ["Interface error", str(e)])
 
     def run_loop(self, watchdogfn = None):
         """
@@ -204,16 +241,16 @@ class ZMQJSONProxyServer(object):
                 socks = dict(poller.poll(120000))
 
                 if self.s in socks and socks[self.s] == zmq.POLLIN:
-                    message = self.s.recv_json()
+                    message = _recv_msgpack(self.s)
 
                     if message['proc'] == 'list_methods':
                         self.list_proxied_interfaces(message['name'])
                     else:
                         ret_msg = self.dispatch(message)
-                        self.s.send_json(ret_msg)
+                        _send_msgpack(self.s, ret_msg)
 
                 if self.pipe in socks and socks[self.pipe] == zmq.POLLIN:
-                    message = self.pipe.recv_json()
+                    message = _recv_msgpack(self.pipe)
                     print message
 
                     if message == "QUIT":
@@ -266,7 +303,7 @@ class ZMQJSONProxyServer(object):
         print "Proxy quit_loop() called"
         pc = self.ctx.socket(zmq.PUSH)
         pc.connect(self.pipe_url)
-        pc.send_json("QUIT")
+        _send_msgpack(pc, "QUIT")
 
     def generate_watchdog_messages(self, name, delay):
         """Runs as a separate thread, generates 'WATCHDOG' messages for the
@@ -277,12 +314,12 @@ class ZMQJSONProxyServer(object):
         pc.connect(self.pipe_url)
 
         while not self.exit_flag:
-            pc.send_json(name)
+            _send_msgpack(pc, name)
             time.sleep(delay)
 
 
 
-class ZMQJSONProxyClient(object):
+class PyProximityClient(object):
     """
     A proxy class to proxy remote objects over a ZMQ connection using
     the JSON protocol. Currently only proxies member functions. Also,
@@ -365,7 +402,7 @@ class ZMQJSONProxyClient(object):
         self._poller = zmq.Poller()
         self._poller.register(self._sock, zmq.POLLIN)
         self._sock.connect(self._url)
-        self._sock.send_json({'name': self._obj_name, 'proc': 'list_methods', 'args': [], 'kwargs': {}})
+        _send_msgpack(self._sock, {'name': self._obj_name, 'proc': 'list_methods', 'args': [], 'kwargs': {}})
 
     def _finish_init(self):
         """Tries to finish the initialization by retrieving the response to the
@@ -376,13 +413,13 @@ class ZMQJSONProxyClient(object):
 
         """
         try:
-            methods = self._sock.recv_json(flags=zmq.NOBLOCK)
+            methods = _recv_msgpack(self._sock, flags=zmq.NOBLOCK)
 
             for m, d in methods:
                 self._add_method(m, d)
             self._initialized = True
         except ZMQError as e:
-            print "ZMQJSONProxyClient._finish_init(): %s" % str(e)
+            print "PyProximityClient._finish_init(): %s" % str(e)
 
     def _add_method(self, method_name, doc_string):
         """
@@ -416,7 +453,7 @@ class ZMQJSONProxyClient(object):
         msg = {'name': self._obj_name, 'proc': args[0], 'args': args[1:], 'kwargs': kwargs}
 
         try:
-            self._sock.send_json(msg)
+            _send_msgpack(self._sock, msg)
         except ZMQError:
             self._cleanup()
             self._connect_and_register()
@@ -425,10 +462,10 @@ class ZMQJSONProxyClient(object):
         socks = dict(self._poller.poll(self._time_out))
 
         if self._sock in socks and socks[self._sock] == zmq.POLLIN:
-            repl = self._sock.recv_json()
+            repl = _recv_msgpack(self._sock)
 
             if type(repl) == dict and repl.has_key('EXCEPTION'):
-                raise ZMQJSONProxyException(repl['EXCEPTION'])
+                raise PyProximityException(repl['EXCEPTION'])
 
             return repl
         else:

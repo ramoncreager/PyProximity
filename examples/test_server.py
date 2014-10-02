@@ -31,7 +31,7 @@ import random
 import time
 import signal
 
-from ZMQJSONProxy import ZMQJSONProxyServer
+from py_proximity import PyProximityServer
 
 try:
     from zmq.error import ZMQError
@@ -96,6 +96,10 @@ class MoreInteresting:
     def div_two(self, x, y):
         print "returning %d / %d = %d" % (x, y, x / y)
         return x / y
+
+    def sub_two(self, x, y):
+        print "returning %d - %d = %d" % (x, y, x - y)
+        return x - y
 
     def long_delay(self, delay):
         """
@@ -165,12 +169,12 @@ proxy = None
 
 # The proxy server, can proxy many classes.
 def main_loop():
-    """Runs the server. The ZMQJSONProxyServer uses two sockets, a zmq.REP
+    """Runs the server. The PyProximityServer uses two sockets, a zmq.REP
     socket that listens on the provided URL, and a zmq.PULL socket that
     listens on a local inproc URL that is used to control the
-    ZMQJSONProxyServer.run_loop(). That function will return when the
+    PyProximityServer.run_loop(). That function will return when the
     PULL socket receives a "QUIT", and that happens when the signal
-    handler calls ZMQJSONProxyServer.quit_loop().
+    handler calls PyProximityServer.quit_loop().
 
     """
 
@@ -183,7 +187,7 @@ def main_loop():
     while fail:
         try:
             url = "tcp://0.0.0.0:" + str(get_ephemeral_port())
-            proxy = ZMQJSONProxyServer(ctx, url)
+            proxy = PyProximityServer(ctx, url)
             fail = False
         except ZMQError:
             pass
