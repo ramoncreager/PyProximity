@@ -71,28 +71,101 @@ class PyProximityException(Exception):
    def __init__(self, message):
         Exception.__init__(self, message)
 
+_encoders = []
+_decoders = []
+
+def add_custom_encoding(encoder, decoder):
+    """add_custom_encoding(encoder, decoder)
+
+    Adds a custom encoder/decoder pair to the lists of encoders and
+    decoders. Any custum function must have the following format:
+
+    f(o) -> o
+
+    where 'o' is a 2 element list, [bool, obj]. Further, if the bool
+    element is True, the function must not handle the object, as it has
+    already been en/decoded. Merely return 'o'.
+    """
+    _encoders.append(encoder)
+    _decoders.append(decoder)
+
+
+# sample encoder and decoder functions compatible with
+# 'add_custom_encoding' and the generic encoding/decoding functions.
+
+def decode_datetime(obj):
+    """decode_datetime(obj)
+
+    Decodes datetime and timedelta objects from datetime.
+
+    obj: A list, [handled, obj]. If the bool 'handled' is set,
+    the function will ignore the object.
+    """
+    # if obj[0] is True, then this has already been decoded, don't handle.
+    if not obj[0]:
+        if b'__datetime__' in obj[1]:
+            obj[1] = datetime.datetime.strptime(obj[1]["as_str"], "%Y%m%dT%H:%M:%S.%f")
+            obj[0] = True
+        elif b'__timedelta__' in obj[1]:
+            obj[1] = datetime.timedelta(seconds = obj[1]['total_seconds'])
+            obj[0] = True
+
+    return obj
+
+def encode_datetime(obj):
+    """encode_datetime(obj_tuple)
+
+    Encodes datetime and timedelta from datetime.
+
+    obj: A list, [handled, obj]. If the bool 'handled' is set,
+    the function will ignore the object.
+    """
+    # if obj[0] is True, then this has already been encoded, don't handle
+    if not obj[0]:
+        if isinstance(obj[1], datetime.datetime):
+            obj[1] = {'__datetime__': True, 'as_str': obj[1].strftime("%Y%m%dT%H:%M:%S.%f")}
+            obj[0] = True
+        elif isinstance(obj[1], datetime.timedelta):
+            obj[1] = {'__timedelta__': True, 'total_seconds': obj[1].total_seconds()}
+            obj[0] = True
+            
+    return obj
+
+# add these decoders
+add_custom_encoding(encode_datetime, decode_datetime)
+
+# The private decoding function takes the object, packages it into a 2
+# element list with the handled flag, and runs it by every registered
+# decoder.
+
 def _decode_custom(obj):
     """Add custom code to decode objects here. If not found, 'obj' is
        returned as is.
 
     """
-    # if b'__datetime__' in obj:
-    #     obj = datetime.datetime.strptime(obj["as_str"], "%Y%m%dT%H:%M:%S.%f")
-    # if b'__timedelta__' in obj:
-    #     obj = datetime.timedelta(seconds = obj['total_seconds'])
-    # add more here
-    return obj
+
+    o = [False, obj]
+
+    for f in _decoders:
+        o = f(o)
+
+    return o[1]
+
+# The private encoding function does the same as the decoding function,
+# except it runs the object by every registered encoding function.
 
 def _encode_custom(obj):
     """Add custom code to encode objects here. If the object is not found
     the object is returned as is.
 
     """
-    # if isinstance(obj, datetime.datetime):
-    #     return {'__datetime__': True, 'as_str': obj.strftime("%Y%m%dT%H:%M:%S.%f")}
-    # if isinstance(obj, datetime.timedelta):
-    #     return {'__timedelta__': True, 'total_seconds': obj.total_seconds()}
-    return obj
+    o = [False, obj]
+
+    for f in _encoders:
+        o = f(o)
+
+    return o[1]
+
 
 def _send_msgpack(socket, obj, flags = 0):
     """
@@ -251,7 +324,6 @@ class PyProximityServer(object):
 
                 if self.pipe in socks and socks[self.pipe] == zmq.POLLIN:
                     message = _recv_msgpack(self.pipe)
-                    print message
 
                     if message == "QUIT":
                         done = True
