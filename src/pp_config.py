@@ -45,11 +45,14 @@ class PP_VALS:
     BACKEND_SERVER_URL = "tcp://*:5556"
     ROUTER_CONTROL_URL = "tcp://*:5557"
 
-    # worker inproc channels. These are a pair of PUSH/PULL
-    # sockets. They are the channels to/from the actual code that does
-    # the requested work. The worker will post the request using the
-    # WORKER_REQUEST_URL and continue on. The worker will
-    # asynchronously perform the work, and post the reply to the
-    # WORKER_REPLY_URL chanel, to be returned to the client.
-    WORKER_REQUEST_URL = "inproc://worker_request"
-    WORKER_REPLY_URL = "inproc://worker_reply"
+    # worker inproc channels. These are a pair of PUSH/PULL sockets,
+    # and a control channel. They are the channels to/from the actual
+    # code that does the requested work. The worker will post the
+    # request using the WORKER_REQUEST_URL and continue on. The worker
+    # will asynchronously perform the work, and post the reply to the
+    # WORKER_REPLY_URL chanel, to be returned to the client. When the
+    # user is done with the worker it can kill it via the
+    # WORKER_CONTROL_URL.
+    WORKER_REQUEST_URL = "ipc://worker_request"
+    WORKER_REPLY_URL = "ipc://worker_reply"
+    WORKER_CONTROL_URL = "ipc://worker_control"

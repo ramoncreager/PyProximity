@@ -60,18 +60,15 @@ import inspect
 import thread
 import time
 import datetime
+from PyProximity import PyProximityException
 
 try:
     from zmq.error import ZMQError
 except ImportError:
     from zmq.core import ZMQError
 
-class ZMQJSONProxyException(Exception):
-   def __init__(self, message):
-        Exception.__init__(self, message)
 
-
-class ZMQJSONProxyServer(object):
+class PPJSONServer(object):
 
     def __init__(self, ctx, URL):
         """Initializes the proxy server. Binds the server to a url, but
@@ -158,8 +155,8 @@ class ZMQJSONProxyServer(object):
         try:
             f_dict = self.interfaces[name]
             exported_funcs = \
-                [(ef, f_dict[ef].__doc__) \
-                     for ef in filter(lambda x:x[0] != '_', f_dict.keys())]
+                [(ef, f_dict[ef].__doc__)
+                 for ef in filter(lambda x:x[0] != '_', f_dict.keys())]
 
             if self.s:
                 self.s.send_json(exported_funcs)
@@ -242,7 +239,7 @@ class ZMQJSONProxyServer(object):
             time.sleep(delay)
 
 
-class ZMQJSONProxyClient(object):
+class PPJSONClient(object):
     """
     A proxy class to proxy remote objects over a ZMQ connection using
     the JSON protocol. Currently only proxies member functions. Also,
@@ -251,6 +248,7 @@ class ZMQJSONProxyClient(object):
     reconstructed on the receiving end. Plain Old Types (int, float,
     etc.) and python types (dict, list, set, tuple) present no problem.
     """
+
     def __init__(self, ctx, obj_name, url, time_out=None):
         """
         Initializes a proxy client.
@@ -344,7 +342,7 @@ class ZMQJSONProxyClient(object):
                 self._add_method(m, d)
             self._initialized = True
         except ZMQError as e:
-            print "ZMQJSONProxyClient._finish_init(): %s [%s]" \
+            print "PPJSONClient._finish_init(): %s [%s]" \
                 % (str(e), self._url)
 
     def _add_method(self, method_name, doc_string):
@@ -361,6 +359,7 @@ class ZMQJSONProxyClient(object):
         Creates a closure that will make a remote call to the
         appropriate remote method.
         """
+
         def new_method(self, *args, **kwargs):
             return self._do_the_deed(name, *args, **kwargs)
         return new_method
@@ -394,7 +393,7 @@ class ZMQJSONProxyClient(object):
             repl = self._sock.recv_json()
 
             if type(repl) == dict and 'EXCEPTIN' in repl:
-                raise ZMQJSONProxyException(repl['EXCEPTION'])
+                raise PyProximityException(repl['EXCEPTION'])
 
             return repl
         else:

@@ -1,25 +1,45 @@
+######################################################################
+#  pp_router.py - PyProximity router. Receives requests from a client,
+#  passes them along to the requested worker, or returns an error if
+#  the requested worker is not running.
+#
+#  This is based on the original rtdealer.py example in The Guide
+#  (http://zguide.zeromq.org/py:rtdealer) by Jeremy Avnet (brainsik)
+#  <spork(dash)zmq(at)theory(dot)org>, with changes needed to make it
+#  work with named workers and to report worker outages. The original
+#  was more of a load-balancing approach, where any available worker
+#  would do. This code assumes wokers that have a specific identity
+#  because they are not interchangeable (for example, tied to
+#  hardware).
+#
+#  Copyright (C) 2016 Associated Universities, Inc. Washington DC, USA.
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful, but
+#  WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+#  General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+#  Correspondence concerning GBT software should be addressed as follows:
+#  GBT Operations
+#  National Radio Astronomy Observatory
+#  P. O. Box 2
+#  Green Bank, WV 24944-0002 USA
+#
+######################################################################
 
-
-# encoding: utf-8
-#
-#   Custom routing Router to Dealer
-#
-#   This is based on the original rtdealer.py example in The Guide
-#   (http://zguide.zeromq.org/py:rtdealer) by Jeremy Avnet (brainsik)
-#   <spork(dash)zmq(at)theory(dot)org>
-#
-#   I have tried to make the workers more general, so that you can
-#   spawn as many as you'd like. Just modify the 'workers' list in
-#   'run_tasks(). Also, to demonstrate the 2-way asynchronous
-#   communication channel that this approach provides over REQ/REP,
-#   the Broker does the bookkeeping of the worker activity.
-#
-#   R. Creager <rcreager(at)nrao(dot)edu>
-#
 
 import time
 import zmq
-from pp_config import PP_VALS as PPP
+from PyProximity import PP_VALS as PPP
 from collections import OrderedDict
 
 
@@ -124,6 +144,7 @@ def broker():
                     print "Backend - I: Got message %s from worker" % str(msg)
                     backend.send_multipart([address, PPP.HEARTBEAT])
             else:
+                print "Frontend - I: Sending to client", msg
                 frontend.send_multipart(msg)
                 pending_pop([address], False)
 
@@ -177,43 +198,3 @@ def broker():
 
         purged = set(workers.purge())
         pending_pop(purged)
-
-
-def router_ctl(cmd):
-    ctx = zmq.Context().instance()
-    pipe = ctx.socket(zmq.REQ)
-    pipe.connect("tcp://localhost:5557")
-    pipe.send(cmd)
-    msg = pipe.recv()
-    pipe.setsockopt(zmq.LINGER, 0)
-    pipe.close()
-    return msg
-
-
-def client_msg(addr, msg):
-    ctx = zmq.Context().instance()
-    pipe = ctx.socket(zmq.DEALER)
-    poller = zmq.Poller()
-    poller.register(pipe, zmq.POLLIN)
-    pipe.connect("tcp://localhost:5555")
-    pipe.send_multipart([addr, msg])
-    socks = dict(poller.poll(3 * 1000))
-    reply = []
-
-    if pipe in socks:
-        msg = pipe.recv_multipart()
-
-        if msg[-1] == PPP.NO_SUCH_WORKER:
-            print "Router reports no such worker"
-            # and that's the end of that.
-        elif msg[-1] == PPP.REQ_ACK:
-            reply = pipe.recv_multipart()
-
-            if len(reply) == 1 and reply[0] == PPP.NO_SUCH_WORKER:
-                print "Router just removed the worker."
-    else:
-        print "Router is not answering."
-
-    pipe.setsockopt(zmq.LINGER, 0)
-    pipe.close()
-    return reply

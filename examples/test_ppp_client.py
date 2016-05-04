@@ -1,8 +1,8 @@
 import zmq
-from PyProximity import REQREPProxyClient as ProxyClient
+from PyProximity import PPPProxyClient as ProxyClient
 ctx = zmq.Context()
 
-URL = "tcp://ajax:56870"
+URL = "tcp://phaedra:5555"
 
 ap = ProxyClient('PLAYER1', ctx, 'animals', URL)
 ip = ProxyClient('PLAYER1', ctx, 'interesting', URL)

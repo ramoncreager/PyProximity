@@ -28,19 +28,19 @@
 
 import time
 import zmq
-from ppp_config import PP_VALS as PPP
+from PyProximity import PP_VALS as PPP
 
 
-def create_worker(identity, req_chan, rep_chan, context=None):
+def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
     """Creates a worker, closing over 'identity', 'req_chan', 'req_chan',
        'context'.
 
     identity: The name of the worker. This should be unique within the
     system, to allow the client to specify this worker.
 
-    req_chan: If provided, requests from the client are placed in this queue.
+    req_url: If provided, requests from the client are placed in this queue.
 
-    rep_chan: If provided, results from the request are placed in this queue
+    rep_url: If provided, results from the request are placed in this queue
 
     context: If provided, this context will be used to create and
     operate ZMQ objects; otherwise the global instance will be used.
@@ -58,26 +58,31 @@ def create_worker(identity, req_chan, rep_chan, context=None):
     def worker():
         id = identity
         ctx = context or zmq.Context.instance()
-        to_worker = ctx.socket(zmq.PUSH)
         work_request = ctx.socket(zmq.PUSH)
         work_result = ctx.socket(zmq.PULL)
+        worker_ctl = ctx.socket(zmq.REP)
         poller = zmq.Poller()
         liveness = PPP.HEARTBEAT_INTERVAL
         interval = PPP.INTERVAL_INIT
-        worker = worker_socket(id, ctx, poller)
+        router_clnt = worker_socket(id, ctx, poller)
         heartbeat_at = time.time() + PPP.HEARTBEAT_INTERVAL
-        # work_request.connect(WORKER_REPLY_URL)
-        # work_result.bind(WORKER_REPLY_URL)
         poller.register(work_result, zmq.POLLIN)
+        poller.register(worker_ctl, zmq.POLLIN)
+        worker_ctl.bind(ctrl_url)
+        work_request.connect(req_url)
+        work_result.bind(rep_url)
 
         while True:
             socks = dict(poller.poll(PPP.HEARTBEAT_INTERVAL * 1000))
 
-            if socks.get(worker) == zmq.POLLIN:
+            ##############################
+            # A request from the broker:
+            ##############################
+            if socks.get(router_clnt) == zmq.POLLIN:
                 #  Get message
                 #  - 3-part envelope + content -> request
                 #  - 1-part HEARTBEAT -> heartbeat
-                frames = worker.recv_multipart()
+                frames = router_clnt.recv_multipart()
                 print "%s - YYYYAAAAAYYYYY!!!! got frame: %s" % \
                     (id, str(frames))
 
@@ -91,13 +96,8 @@ def create_worker(identity, req_chan, rep_chan, context=None):
                     print "%s - %s" % (id, str(frames))
 
                     # channel to code that actually does work
-                    if req_chan:
-                        req_chan.put(frames)
-                    # reply from code that actually does work
-                    if rep_chan:
-                        frames = rep_chan.get()
-
-                    worker.send_multipart(frames)
+                    print "%s - I: Posting request" % id
+                    work_request.send_multipart(frames)
                     liveness = PPP.HEARTBEAT_LIVENESS
                 elif flen == 1:
                     if frames[0] == PPP.HEARTBEAT:
@@ -108,10 +108,33 @@ def create_worker(identity, req_chan, rep_chan, context=None):
                         break
                     else:
                         reply = b"%s: Did not understand '%s'" % (id, frames)
-                        worker.send_multipart([reply])
+                        router_clnt.send_multipart([reply])
                 else:
                     print "%s - E: Invalid message: %s" % (id, str(frames))
                 interval = PPP.INTERVAL_INIT
+
+            ##############################
+            # A result from the work code:
+            ##############################
+            elif socks.get(work_result) == zmq.POLLIN:
+                frames = work_result.recv_multipart()
+                print "WORKER - I: Received result!", frames
+                router_clnt.send_multipart(frames)
+
+            ##############################
+            # A request from the work code:
+            ##############################
+            elif socks.get(worker_ctl) == zmq.POLLIN:
+                msg = worker_ctl.recv()
+
+                if msg == PPP.QUIT:
+                    print "%s - I: Queue terminating" % id
+                    worker_ctl.send(PPP.QUIT)
+                    break
+
+            ##############################
+            # timeout
+            ##############################
             else:
                 liveness -= 1
                 if liveness == 0:
@@ -122,15 +145,24 @@ def create_worker(identity, req_chan, rep_chan, context=None):
                     if interval < PPP.INTERVAL_MAX:
                         interval *= 2
 
-                    poller.unregister(worker)
-                    worker.setsockopt(zmq.LINGER, 0)
-                    worker.close()
-                    worker = worker_socket(id, ctx, poller)
+                    poller.unregister(router_clnt)
+                    router_clnt.setsockopt(zmq.LINGER, 0)
+                    router_clnt.close()
+                    router_clnt = worker_socket(id, ctx, poller)
                     liveness = PPP.HEARTBEAT_LIVENESS
 
             if time.time() > heartbeat_at:
                 heartbeat_at = time.time() + PPP.HEARTBEAT_INTERVAL
                 print "%s - I: Worker heartbeat" % id
-                worker.send(PPP.HEARTBEAT)
+                router_clnt.send(PPP.HEARTBEAT)
+
+        worker_ctl.setsockopt(zmq.LINGER, 0)
+        worker_ctl.close()
+        work_request.setsockopt(zmq.LINGER, 0)
+        work_request.close()
+        work_result.setsockopt(zmq.LINGER, 0)
+        work_result.close()
+        router_clnt.setsockopt(zmq.LINGER, 0)
+        router_clnt.close()
 
     return worker
