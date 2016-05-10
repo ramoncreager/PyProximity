@@ -187,6 +187,7 @@ def main_loop():
         try:
             url = "tcp://ajax:5556"
             proxy = PPPProxyServer('PLAYER1', ctx, url)
+            print type(proxy)
             fail = False
         except ZMQError:
             pass

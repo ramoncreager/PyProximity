@@ -30,6 +30,7 @@ import time
 import zmq
 import logging as log
 from PyProximity import PP_VALS as PPP
+from PyProximity import PyProximityException
 
 
 def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
@@ -49,6 +50,10 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
     """
 
     def worker_socket(id, context, poller):
+        if not id:
+            raise PyProximityException("id passed to worker is invalid: '%s'"
+                                       % (id))
+
         worker = context.socket(zmq.DEALER)
         worker.setsockopt(zmq.IDENTITY, id)
         poller.register(worker, zmq.POLLIN)

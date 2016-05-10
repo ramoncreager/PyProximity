@@ -33,8 +33,8 @@ from src.pp_worker import create_worker
 from src.pp_encoder import Encoder, MsgPackEncoder, JSONEncoder
 from src.pp_encoder import encode_datetime
 from src.pp_encoder import decode_datetime
-from src.simple_proxy import REQREPProxyClient, REQREPProxyServer
-from src.simple_proxy import PPPProxyClient, PPPProxyServer
+from src.proxy import REQREPProxyClient, REQREPProxyServer
+from src.proxy import PPPProxyClient, PPPProxyServer
 
 __all__ = [
     'Encoder',

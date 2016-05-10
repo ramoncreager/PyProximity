@@ -30,5 +30,5 @@ from PyProximity import broker
 
 
 if __name__ == '__main__':
-    log.basicConfig(level=log.WARNING)
+    log.basicConfig(level=log.DEBUG)
     broker('tcp://*:5555', 'tcp://*:5556', 'tcp://*:5557')
