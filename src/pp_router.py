@@ -39,6 +39,8 @@
 
 import time
 import zmq
+import logging as log
+
 from PyProximity import PP_VALS as PPP
 from collections import OrderedDict
 
@@ -69,7 +71,7 @@ class WorkerQueue(object):
             if t > worker.expiry:  # Worker expired
                 expired.append(address)
         for address in expired:
-            print "W: Idle worker expired: %s" % address
+            log.warning("Idle worker expired: %s", address)
             self.queue.pop(address, None)
 
         return expired
@@ -79,15 +81,38 @@ class WorkerQueue(object):
         return address
 
 
-def broker():
+def broker(front_url=None, back_url=None, ctrl_url=None):
+    """Runs the broker at the specified URLs. The broker is the central
+    connection point to the system. All of its interfaces are ZMQ
+    server interfaces.
+
+    front_url: The front-facing interface's URL. Clients to the system
+    will connect to this. This interface is a ZMQ ROUTER
+
+    back_url: The back-facing interface's URL. Workers will connect to
+    this. This interface is a ZMQ ROUTER.
+
+    ctrl_url: This is a control interface, can tell the router to do
+    things such as kill workers, kill itself. This is a ZMQ REP interface.
+
+    """
     context = zmq.Context.instance()
     frontend = context.socket(zmq.ROUTER)
     backend = context.socket(zmq.ROUTER)
     pipe = context.socket(zmq.REP)
 
-    frontend.bind(PPP.FRONTEND_SERVER_URL)
-    backend.bind(PPP.BACKEND_SERVER_URL)
-    pipe.bind(PPP.ROUTER_CONTROL_URL)
+    if not front_url:
+        front_url = PPP.FRONTEND_SERVER_URL
+
+    if not back_url:
+        back_url = PPP.BACKEND_SERVER_URL
+
+    if not ctrl_url:
+        ctrl_url = PPP.ROUTER_CONTROL_URL
+
+    frontend.bind(front_url)
+    backend.bind(back_url)
+    pipe.bind(ctrl_url)
     poller = zmq.Poller()
     poller.register(frontend, zmq.POLLIN)
     poller.register(backend, zmq.POLLIN)
@@ -125,7 +150,7 @@ def broker():
         if socks.get(backend) == zmq.POLLIN:
             # Use worker address for LRU routing
             frames = backend.recv_multipart()
-            print "Backend - worker: %s" % str(frames)
+            log.info("Backend: %s", frames)
 
             if not frames:
                 continue
@@ -138,20 +163,21 @@ def broker():
 
             if len(msg) == 1:
                 if msg[0] not in (PPP.READY, PPP.HEARTBEAT):
-                    print "Backend - E: Invalid message from worker: %s" \
-                        % str(frames)
+                    log.error("Backend: Invalid message: '%s' from worker %s",
+                              address, str(frames))
                 else:
-                    print "Backend - I: Got message %s from worker" % str(msg)
+                    log.debug("Backend: Got message %s from worker %s",
+                              msg, address)
                     backend.send_multipart([address, PPP.HEARTBEAT])
             else:
-                print "Frontend - I: Sending to client", msg
+                log.debug("Frontend: Sending to client", msg)
                 frontend.send_multipart(msg)
                 pending_pop([address], False)
 
             # Send heartbeats to idle workers if it's time
             if time.time() >= heartbeat_at:
                 for worker in workers.queue:
-                    print "Backend - sending HB to worker %s" % str(worker)
+                    log.debug("Backend - sending HB to worker %s", worker)
                     msg = [worker, PPP.HEARTBEAT]
                     backend.send_multipart(msg)
                 heartbeat_at = time.time() + PPP.HEARTBEAT_INTERVAL
@@ -159,7 +185,7 @@ def broker():
         # Handle activity from FRONTEND
         if socks.get(frontend) == zmq.POLLIN:
             frames = frontend.recv_multipart()
-            print "Frontend - request: %s" % str(frames)
+            log.info("Frontend: %s", frames)
             if not frames:
                 continue
 
@@ -176,15 +202,16 @@ def broker():
                 else:
                     frontend.send_multipart(
                         [frames[0], PPP.NO_SUCH_WORKER])
+                    log.warning('%s: NO_SUCH_WORKER', id)
 
         if socks.get(pipe) == zmq.POLLIN:
             msg = pipe.recv_multipart()
-            print "PIPE - got %s" % str(msg)
+            log.debug("PIPE - got %s", msg)
 
             if msg[0] == PPP.QUIT:
                 reply = b"Router is quitting."
                 pipe.send(reply)
-                print "Router is quitting."
+                log.info("Router is quitting.")
                 return
             elif msg[0] == PPP.KILL_WORKERS:
                 for w in workers.queue:

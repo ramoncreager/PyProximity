@@ -62,6 +62,7 @@ import inspect
 import thread
 import time
 import datetime
+import logging as log
 
 from zmq.error import ZMQError
 from threading import Thread
@@ -101,7 +102,7 @@ class ProxyServer(object):
         self.pipe_url = "inproc://ctrl_pipe" + '.' + self.id
         self.interfaces = {}
         self.ctx = ctx
-        print URL
+        log.info(URL)
 
     def _send(self, sock, msg):
         raise PyProximityException("Unimplemented base class function called!")
@@ -299,8 +300,8 @@ class REQREPProxyServer(ProxyServer):
                 thread.start_new_thread(
                     self.generate_watchdog_messages, ("WATCHDOG", 1, ))
             except:
-                print "Error: unable to start watchdog thread. " \
-                    "There will be no watchdog."
+                log.warning("Error: unable to start watchdog thread. "
+                            "There will be no watchdog.")
 
         while not done:
             try:
@@ -331,7 +332,7 @@ class REQREPProxyServer(ProxyServer):
 
             except ZMQError as e:
                 err = str(e)
-                print "zmq.core.ZMQError:", err
+                log.exception(err)
 
                 # could be a CTRL-C, requesting termination
                 if "Interrupted system call" not in err:
@@ -488,27 +489,26 @@ class PPPProxyServer(ProxyServer):
                     message = pipe.recv()
 
                     if message == PP.QUIT:
-                        print "PROXY - I: ProxyServer terminating."
+                        log.info("ProxyServer terminating.")
                         wctl = self.ctx.socket(zmq.REQ)
                         wctl.connect(self.ctrl_url)
                         wctl.send(message)
                         rep = wctl.recv()
 
                         if rep == PP.QUIT:
-                            print "%s - I: Worker has terminated." % self.id
+                            log.info(" Worker %s has terminated.", self.id)
 
                         done = True
 
         except ZMQError as e:
-            err = str(e)
-            print "zmq.core.ZMQError:", err
+            log.exception(e)
 
             # could be a CTRL-C, requesting termination
             if "Interrupted system call" not in err:
                 pass  # Hmm, should do something on ZMQ error
 
         except PyProximityException as e:
-            print '%s - W: %s' % (self.id, str(e))
+            log.exception(e)
 
         self.exit_flag = True
 
@@ -517,7 +517,7 @@ class PPPProxyServer(ProxyServer):
         Tells the main loop 'run_loop()' to exit by passing it a message
         on its control pipe socket.
         """
-        print "Proxy quit_loop() called"
+        log.debug("Proxy quit_loop() called")
         pc = self.ctx.socket(zmq.PUSH)
         pc.connect(self.pipe_url)
         pc.send(PP.QUIT)
@@ -569,7 +569,7 @@ class ProxyClient(object):
     # functions, and if so finish the initialization.
     def __getattr__(self, name):
         if not self._initialized:
-            self._connect_and_register()
+            self._connect_and_register(2.0)
             self._finish_init(1.0)
 
         if hasattr(self, name):
@@ -624,6 +624,7 @@ class ProxyClient(object):
         self._poller.register(self._sock, zmq.POLLIN)
         self._sock.connect(self._url)
         methods = self._get_server_methods(2.0)
+        log.debug(methods)
 
         if methods:
             self._add_methods(methods)
@@ -743,15 +744,16 @@ class REQREPProxyClient(ProxyClient):
                     'proc': 'list_methods',
                     'args': [],
                     'kwargs': {}})
-        try:
-            socks = dict(self._poller.poll(time_out * 1000))
+        socks = dict(self._poller.poll(time_out * 1000))
 
-            if socks.get(self._sock) == zmq.POLLIN:
-                methods = self._recv()
-            else:
-                print "ProxyClient: %s" % "No server."
-        except ZMQError as e:
-            print "ProxyClient: %s" % str(e)
+        if socks.get(self._sock) == zmq.POLLIN:
+            methods = self._recv()
+
+            if "Interface error" in methods:
+                raise PyProximityException(
+                    methods[0] + methods[1])
+        else:
+            raise PyProximityException("ProxyClient: %s" % "No server.")
 
         return methods
 
@@ -786,7 +788,7 @@ class REQREPProxyClient(ProxyClient):
 
             return reply
         else:
-            print "socket timed out! Check server at %s" % self._url
+            log.warning("socket timed out! Check server at %s", self._url)
             self._cleanup()
             self._connect_and_register()
             return None
@@ -867,31 +869,33 @@ class PPPProxyClient(ProxyClient):
                     'proc': 'list_methods',
                     'args': [],
                     'kwargs': {}})
-        try:
-            while True:
-                socks = dict(self._poller.poll(time_out * 1000))
 
-                if socks.get(self._sock) == zmq.POLLIN:
-                    frames = self._recv()
-                    print len(frames)
-                    print frames
+        while True:
+            socks = dict(self._poller.poll(time_out * 1000))
 
-                    if len(frames) == 1:
-                        if PP.NO_SUCH_WORKER in frames:
-                            raise PyProximityException(
-                                "%s: Router @ %s reports 'NO_SUCH_WORKER'"
-                                % (self._id, self._url))
-                        elif PP.REQ_ACK in frames:
-                            continue
-                    else:
-                        methods = frames.pop()
-                        break
+            if socks.get(self._sock) == zmq.POLLIN:
+                frames = self._recv()
+                log.debug("frame received of length %i: %s",
+                          len(frames), str(frames))
+
+                if len(frames) == 1:
+                    if PP.NO_SUCH_WORKER in frames:
+                        raise PyProximityException(
+                            "%s: Router @ %s reports 'NO_SUCH_WORKER'"
+                            % (self._id, self._url))
+                    elif PP.REQ_ACK in frames:
+                        continue
                 else:
-                    raise PyProximityException(
-                        "%s: No acknowledgement from router @ %s."
-                        % (self._id, self._url))
-        except ZMQError as e:
-            print "PPPProxyClient._get_server_methods: %s" % str(e)
+                    methods = frames.pop()
+
+                    if 'Interface error' in methods:
+                        raise PyProximityException(
+                            methods[0] + " " + str(methods[1]))
+                    break
+            else:
+                raise PyProximityException(
+                    "%s: No acknowledgement from router @ %s."
+                    % (self._id, self._url))
 
         return methods
 
@@ -910,11 +914,7 @@ class PPPProxyClient(ProxyClient):
         msg = {'name': self._obj_name, 'proc': args[0],
                'args': args[1:], 'kwargs': kwargs}
 
-        try:
-            self._send(msg)
-        except ZMQError as e:
-            raise PyProximityException('Client %s: %s' % (self._id, str(e)))
-
+        self._send(msg)
         waited = 0
         ack = False
 
@@ -923,13 +923,13 @@ class PPPProxyClient(ProxyClient):
 
             if socks.get(self._sock) == zmq.POLLIN:
                 frames = self._recv()
-                print frames
-                print len(frames)
+                log.debug("frame received of length %i: %s",
+                          len(frames), str(frames))
 
                 if len(frames) == 1:
                     if PP.REQ_ACK in frames:
                         # router says all is well, wait for reply.
-                        print "all is well, waiting for answer"
+                        log.debug("all is well, waiting for answer")
                         ack = True
                         continue
                     elif PP.NO_SUCH_WORKER in frames:
@@ -961,7 +961,7 @@ class PPPProxyClient(ProxyClient):
                         raise PyProximityException(
                             "%s: Mismatched response. Router @ %s\n"
                             "sent: %s\nreceived: %s"
-                            % (self._id, str(msg), str(reply)))
+                            % (self._id, self._url,  str(msg), str(reply)))
             else:
                 waited += 1000
 

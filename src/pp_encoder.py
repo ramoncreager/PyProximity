@@ -28,6 +28,7 @@
 import json
 import msgpack
 import datetime
+
 from PyProximity import PyProximityException
 
 

@@ -29,6 +29,7 @@
 import zmq
 import time
 import signal
+import logging as log
 
 from PyProximity import PPPProxyServer
 from zmq.error import ZMQError
@@ -204,5 +205,6 @@ def main_loop():
     proxy.run_loop()
 
 if __name__ == '__main__':
+    log.basicConfig(level=log.INFO)
     signal.signal(signal.SIGINT, signal_handler)
     main_loop()

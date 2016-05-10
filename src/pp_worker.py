@@ -28,6 +28,7 @@
 
 import time
 import zmq
+import logging as log
 from PyProximity import PP_VALS as PPP
 
 
@@ -83,8 +84,8 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
                 #  - 3-part envelope + content -> request
                 #  - 1-part HEARTBEAT -> heartbeat
                 frames = router_clnt.recv_multipart()
-                print "%s - YYYYAAAAAYYYYY!!!! got frame: %s" % \
-                    (id, str(frames))
+                log.debug("%s - YYYYAAAAAYYYYY!!!! got frame: %s",
+                          id, frames)
 
                 if not frames:
                     break  # Interrupted
@@ -92,25 +93,25 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
                 flen = len(frames)
 
                 if flen == 3:
-                    print "%s - I: Normal reply" % id
-                    print "%s - %s" % (id, str(frames))
+                    log.debug("%s: Normal reply", id)
+                    log.debug("%s - %s", id, frames)
 
                     # channel to code that actually does work
-                    print "%s - I: Posting request" % id
+                    log.debug("%s: Posting request", id)
                     work_request.send_multipart(frames)
                     liveness = PPP.HEARTBEAT_LIVENESS
                 elif flen == 1:
                     if frames[0] == PPP.HEARTBEAT:
-                        print "%s - I: Queue heartbeat" % id
+                        log.debug("%s: Queue heartbeat", id)
                         liveness = PPP.HEARTBEAT_LIVENESS
                     elif frames[0] == PPP.QUIT:
-                        print "%s - I: Queue terminating" % id
+                        log.info("%s: Queue terminating", id)
                         break
                     else:
                         reply = b"%s: Did not understand '%s'" % (id, frames)
                         router_clnt.send_multipart([reply])
                 else:
-                    print "%s - E: Invalid message: %s" % (id, str(frames))
+                    log.error("%s: Invalid message: %s", id, frames)
                 interval = PPP.INTERVAL_INIT
 
             ##############################
@@ -118,7 +119,7 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
             ##############################
             elif socks.get(work_result) == zmq.POLLIN:
                 frames = work_result.recv_multipart()
-                print "WORKER - I: Received result!", frames
+                log.debug("WORKER - I: Received result! %s", frames)
                 router_clnt.send_multipart(frames)
 
             ##############################
@@ -128,7 +129,7 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
                 msg = worker_ctl.recv()
 
                 if msg == PPP.QUIT:
-                    print "%s - I: Queue terminating" % id
+                    log.debug("%s - I: Queue terminating" % id)
                     worker_ctl.send(PPP.QUIT)
                     break
 
@@ -138,8 +139,10 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
             else:
                 liveness -= 1
                 if liveness == 0:
-                    print "%s - W: Heartbeat failure, can't reach queue" % id
-                    print "%s - W: Reconnecting in %0.2fs..." % (id, interval)
+                    log.debug(
+                        "%s - W: Heartbeat failure, can't reach queue" % id)
+                    log.debug("%s - W: Reconnecting in %0.2fs..." %
+                              (id, interval))
                     time.sleep(interval)
 
                     if interval < PPP.INTERVAL_MAX:
@@ -153,7 +156,7 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
 
             if time.time() > heartbeat_at:
                 heartbeat_at = time.time() + PPP.HEARTBEAT_INTERVAL
-                print "%s - I: Worker heartbeat" % id
+                log.debug("%s - I: Worker heartbeat" % id)
                 router_clnt.send(PPP.HEARTBEAT)
 
         worker_ctl.setsockopt(zmq.LINGER, 0)
