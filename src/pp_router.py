@@ -81,7 +81,7 @@ class WorkerQueue(object):
         return address
 
 
-def broker(front_url=None, back_url=None, ctrl_url=None):
+def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
     """Runs the broker at the specified URLs. The broker is the central
     connection point to the system. All of its interfaces are ZMQ
     server interfaces.
@@ -95,11 +95,15 @@ def broker(front_url=None, back_url=None, ctrl_url=None):
     ctrl_url: This is a control interface, can tell the router to do
     things such as kill workers, kill itself. This is a ZMQ REP interface.
 
+    pub_url: This is a zmq.PUB interface. Samplers, Alerts and Logs
+    are published via this interface.
+
     """
     context = zmq.Context.instance()
     frontend = context.socket(zmq.ROUTER)
     backend = context.socket(zmq.ROUTER)
     pipe = context.socket(zmq.REP)
+    pub = context.socket(zmq.PUB)
 
     if not front_url:
         front_url = PPP.FRONTEND_SERVER_URL
@@ -110,9 +114,13 @@ def broker(front_url=None, back_url=None, ctrl_url=None):
     if not ctrl_url:
         ctrl_url = PPP.ROUTER_CONTROL_URL
 
+    if not pub_url:
+        pub_url = PPP.ROUTER_PUB_URL
+
     frontend.bind(front_url)
     backend.bind(back_url)
     pipe.bind(ctrl_url)
+    pub.bind(pub_url)
     poller = zmq.Poller()
     poller.register(frontend, zmq.POLLIN)
     poller.register(backend, zmq.POLLIN)
@@ -132,7 +140,7 @@ def broker(front_url=None, back_url=None, ctrl_url=None):
 
     def pending_pop(workers, msg=True):
         """called by the backend if it is returning a frontend call, or if it
-           is purging the workers
+        is purging the workers
 
         """
         for w in workers:
@@ -156,8 +164,6 @@ def broker(front_url=None, back_url=None, ctrl_url=None):
                 continue
 
             address = frames[0]
-            workers.ready(Worker(address))
-
             # Validate control message, or return reply to client
             msg = frames[1:]
 
@@ -169,10 +175,22 @@ def broker(front_url=None, back_url=None, ctrl_url=None):
                     log.debug("Backend: Got message %s from worker %s",
                               msg, address)
                     backend.send_multipart([address, PPP.HEARTBEAT])
+                    workers.ready(Worker(address))
             else:
-                log.debug("Frontend: Sending to client", msg)
-                frontend.send_multipart(msg)
-                pending_pop([address], False)
+                msg_type = msg[-2]
+
+                if msg_type == PPP.RPC:
+                    log.debug("Frontend: Sending to client %s", msg)
+                    frontend.send_multipart(msg)
+                    pending_pop([address], False)
+                    workers.ready(Worker(address))
+                elif msg_type == PPP.ALERT \
+                        or msg_type == PPP.SAMPLE \
+                        or msg_type == PPP.LOG:
+                    log.debug('Publishing message %s', msg)
+                    pub.send_multipart(msg)
+                else:
+                    log.warning("Backend: Unknown message type %s", msg)
 
             # Send heartbeats to idle workers if it's time
             if time.time() >= heartbeat_at:

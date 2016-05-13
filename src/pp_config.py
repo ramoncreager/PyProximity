@@ -37,6 +37,10 @@ class PP_VALS:
     HEARTBEAT = "\x02"       # Signals worker heartbeat
     REQ_ACK = "\x03"         # ACK to client that message handled
     NO_SUCH_WORKER = "\x04"  # Message to client that no such worker exists
+    RPC = '\x05'             # The message is an RPC response
+    ALERT = '\0x06'          # The message is an alert (an M&C Message equiv.)
+    SAMPLE = '\0x07'         # The message is a data sample publication
+    LOG = '\0x08'            # The message is a log message
     QUIT = "\x10"            # Kill the worker.
     KILL_WORKERS = "\x11"    # tells router to kill all connected workers.
 
@@ -44,6 +48,7 @@ class PP_VALS:
     FRONTEND_SERVER_URL = "tcp://*:5555"
     BACKEND_SERVER_URL = "tcp://*:5556"
     ROUTER_CONTROL_URL = "tcp://*:5557"
+    ROUTER_PUB_URL = 'tcp://*:5558'
 
     # worker inproc channels. These are a pair of PUSH/PULL sockets,
     # and a control channel. They are the channels to/from the actual

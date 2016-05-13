@@ -27,7 +27,7 @@
 
 
 from src.pp_config import PP_VALS
-from src.pp_utils import router_ctl, client_msg, PyProximityException
+from src.pp_exception import PyProximityException
 from src.pp_router import broker
 from src.pp_worker import create_worker
 from src.pp_encoder import Encoder, MsgPackEncoder, JSONEncoder
@@ -35,21 +35,23 @@ from src.pp_encoder import encode_datetime
 from src.pp_encoder import decode_datetime
 from src.proxy import REQREPProxyClient, REQREPProxyServer
 from src.proxy import PPPProxyClient, PPPProxyServer
+from src.pp_utils import router_ctl, client_msg, create_publisher
 
 __all__ = [
     'Encoder',
     'JSONEncoder',
     'MsgPackEncoder',
-    'PP_VALS',
-    'PyProximityException',
-    'broker',
-    'client_msg',
-    'create_worker',
-    'decode_datetime',
-    'router_ctl',
-    'REQREPProxyClient',
-    'REQREPProxyServer',
     'PPPProxyClient',
     'PPPProxyServer',
-    'encode_datetime'
+    'PP_VALS',
+    'PyProximityException',
+    'REQREPProxyClient',
+    'REQREPProxyServer',
+    'broker',
+    'client_msg',
+    'create_publisher',
+    'create_worker',
+    'decode_datetime',
+    'encode_datetime',
+    'router_ctl'
 ]

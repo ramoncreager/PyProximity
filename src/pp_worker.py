@@ -97,15 +97,7 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
 
                 flen = len(frames)
 
-                if flen == 3:
-                    log.debug("%s: Normal reply", id)
-                    log.debug("%s - %s", id, frames)
-
-                    # channel to code that actually does work
-                    log.debug("%s: Posting request", id)
-                    work_request.send_multipart(frames)
-                    liveness = PPP.HEARTBEAT_LIVENESS
-                elif flen == 1:
+                if flen == 1:
                     if frames[0] == PPP.HEARTBEAT:
                         log.debug("%s: Queue heartbeat", id)
                         liveness = PPP.HEARTBEAT_LIVENESS
@@ -116,7 +108,14 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
                         reply = b"%s: Did not understand '%s'" % (id, frames)
                         router_clnt.send_multipart([reply])
                 else:
-                    log.error("%s: Invalid message: %s", id, frames)
+                    log.debug("%s: Normal reply", id)
+                    log.debug("%s - %s", id, frames)
+
+                    # channel to code that actually does work
+                    log.debug("%s: Posting request", id)
+                    work_request.send_multipart(frames)
+                    liveness = PPP.HEARTBEAT_LIVENESS
+
                 interval = PPP.INTERVAL_INIT
 
             ##############################

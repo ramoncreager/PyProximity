@@ -62,6 +62,7 @@ import inspect
 import thread
 import time
 import datetime
+import msgpack
 import logging as log
 
 from zmq.error import ZMQError
@@ -467,38 +468,47 @@ class PPPProxyServer(ProxyServer):
             out_chan.connect(self.worker_reply)
 
             while not done:
-                socks = dict(poller.poll(1000))
-                # request from worker
-                if socks.get(in_chan) == zmq.POLLIN:
-                    frames = in_chan.recv_multipart()
-                    message = self.encoder.decode(frames.pop())
+                try:
+                    socks = dict(poller.poll(1000))
+                    # request from worker
+                    if socks.get(in_chan) == zmq.POLLIN:
+                        frames = in_chan.recv_multipart()
+                        log.debug("Proxy got message: %s", frames)
+                        message = self.encoder.decode(frames.pop())
+                        # for router, tell it that this is an  RPC response.
+                        frames.append(PP.RPC)
 
-                    if message['proc'] == 'list_methods':
-                        methods = self.list_proxied_interfaces(message['name'])
-                        packed = self.encoder.encode(methods)
-                        frames.append(packed)
-                        out_chan.send_multipart(frames)
-                    else:
-                        ret_msg = self.dispatch(message)
-                        message['return'] = ret_msg
-                        packed = self.encoder.encode(message)
-                        frames.append(packed)
-                        out_chan.send_multipart(frames)
+                        if message['proc'] == 'list_methods':
+                            methods = self.list_proxied_interfaces(
+                                message['name'])
+                            packed = self.encoder.encode(methods)
+                            frames.append(packed)
+                            out_chan.send_multipart(frames)
+                        else:
+                            ret_msg = self.dispatch(message)
+                            message['return'] = ret_msg
+                            packed = self.encoder.encode(message)
+                            frames.append(packed)
+                            out_chan.send_multipart(frames)
 
-                if socks.get(pipe) == zmq.POLLIN:
-                    message = pipe.recv()
+                    if socks.get(pipe) == zmq.POLLIN:
+                        message = pipe.recv()
 
-                    if message == PP.QUIT:
-                        log.info("ProxyServer terminating.")
-                        wctl = self.ctx.socket(zmq.REQ)
-                        wctl.connect(self.ctrl_url)
-                        wctl.send(message)
-                        rep = wctl.recv()
+                        if message == PP.QUIT:
+                            log.info("ProxyServer terminating.")
+                            wctl = self.ctx.socket(zmq.REQ)
+                            wctl.connect(self.ctrl_url)
+                            wctl.send(message)
+                            rep = wctl.recv()
 
-                        if rep == PP.QUIT:
-                            log.info(" Worker %s has terminated.", self.id)
+                            if rep == PP.QUIT:
+                                log.info(" Worker %s has terminated.", self.id)
 
-                        done = True
+                            done = True
+                except msgpack.exceptions.ExtraData as e:
+                    log.exception(e)
+                except:
+                    log.error("Unknown exception in proxy.py")
 
         except ZMQError as e:
             log.exception(e)
@@ -935,7 +945,6 @@ class PPPProxyClient(ProxyClient):
                     elif PP.NO_SUCH_WORKER in frames:
                         # if worker went away, must reload
                         # attributes. They may have changed.
-                        self._remove_methods()
                         raise PyProximityException(
                             "%s: Router @ %s reports 'NO_SUCH_WORKER'"
                             % (self._id, self._url))

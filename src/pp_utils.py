@@ -26,13 +26,8 @@
 ######################################################################
 
 import zmq
+from PyProximity import JSONEncoder
 from PyProximity import PP_VALS as PPP
-
-
-class PyProximityException(Exception):
-
-    def __init__(self, message):
-        Exception.__init__(self, message)
 
 
 def router_ctl(cmd):
@@ -73,3 +68,65 @@ def client_msg(addr, msg):
     pipe.setsockopt(zmq.LINGER, 0)
     pipe.close()
     return reply
+
+
+def create_publisher(router_backside_url, pub_type,
+                     worker_id, encoder=JSONEncoder):
+    """Creates a publisher of a given publication type.  Publication types
+    make sense to the publisher and the subscribers.
+
+    *router_backside_url* This URL is to the router's backside. It
+     will receive the data and publish it over a well known zmq.PUB
+     socket.
+
+    *pub_type*: The publication type. This may be used by the
+     publisher and the client to categorize the the publication.
+
+    *worker_id*: The name of the worker: 'PLAYER01', 'BLC13', etc.
+
+    *encoder*: The encoding/decoding class. Defaults to JSONEncoder,
+     may also be MsgPackEncoder.
+
+    """
+    ctx = zmq.Context().instance()
+    pipe = ctx.socket(zmq.DEALER)
+    pipe.connect(router_backside_url)
+    e = encoder()
+    mtypes = {PPP.LOG: 'LOG', PPP.ALERT: 'ALERT', PPP.SAMPLE: 'SAMPLE'}
+
+    def pub(key, msg):
+        """Publishes the data 'msg' using the key 'key'. 'key' is in the
+        format 'type:name' and will be converted by this function into
+        'type:worker:name'
+
+        """
+        packed = e.encode(msg)
+        frames = ['%s:%s:%s' % (mtypes[pub_type], worker_id, key),
+                  pub_type, packed]
+        pipe.send_multipart(frames)
+
+    return pub
+
+
+def subscribe(sub_url, key, encoder=JSONEncoder):
+    ctx = zmq.Context().instance()
+    sub = ctx.socket(zmq.SUB)
+    poller = zmq.Poller()
+    enc = encoder()
+    poller.register(sub, zmq.POLLIN)
+    sub.connect(sub_url)
+    sub.setsockopt(zmq.SUBSCRIBE, key)
+
+    while True:
+        try:
+            socks = dict(poller.poll())
+            if sub in socks:
+                msg = sub.recv_multipart()
+                unpacked = enc.decode(msg[-1])
+                msg.pop()
+                msg.append(unpacked)
+                print msg
+        except KeyboardInterrupt:
+            sub.setsockopt(zmq.LINGER, 0)
+            sub.close()
+            break
