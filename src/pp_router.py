@@ -219,7 +219,7 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
                     backend.send_multipart(frames)
                 else:
                     frontend.send_multipart(
-                        [frames[0], PPP.NO_SUCH_WORKER])
+                        [frames[0], id, PPP.NO_SUCH_WORKER])
                     log.warning('%s: NO_SUCH_WORKER', id)
 
         if socks.get(pipe) == zmq.POLLIN:
