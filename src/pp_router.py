@@ -47,11 +47,12 @@ from collections import OrderedDict
 
 class Worker(object):
 
-    def __init__(self, address):
+    def __init__(self, address, host):
         self.address = address
         self.expiry = time.time() + \
             PPP.HEARTBEAT_INTERVAL * \
             PPP.HEARTBEAT_LIVENESS
+        self.hostname = host
 
 
 class WorkerQueue(object):
@@ -79,6 +80,16 @@ class WorkerQueue(object):
     def next(self):
         address, worker = self.queue.popitem(False)
         return address
+
+    def worker_hosts(self):
+        result = '('
+
+        for w in self.queue:
+            pair = '("%s", "%s")' % (w, self.queue[w].hostname)
+            result += pair
+
+        result += ')'
+        return result
 
 
 def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
@@ -167,15 +178,18 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
             # Validate control message, or return reply to client
             msg = frames[1:]
 
-            if len(msg) == 1:
-                if msg[0] not in (PPP.READY, PPP.HEARTBEAT):
+            if len(msg) <= 2:
+                if msg[0] not in (PPP.READY, PPP.HEARTBEAT, PPP.GET_HOSTS):
                     log.error("Backend: Invalid message: '%s' from worker %s",
                               address, str(frames))
-                else:
+                elif msg[0] in (PPP.READY, PPP.HEARTBEAT):
                     log.debug("Backend: Got message %s from worker %s",
                               msg, address)
                     backend.send_multipart([address, PPP.HEARTBEAT])
-                    workers.ready(Worker(address))
+                    workers.ready(Worker(address, msg[1]))
+                elif msg[0] == PPP.GET_HOSTS:
+                    hosts = workers.worker_hosts()
+                    backend.send_multipart([address, PPP.GET_HOSTS, hosts])
             else:
                 msg_type = msg[-2]
 

@@ -33,16 +33,17 @@ class PP_VALS:
     INTERVAL_MAX = 32
 
     #  Paranoid Pirate Protocol constants
-    READY = "\x01"           # Signals worker is ready
-    HEARTBEAT = "\x02"       # Signals worker heartbeat
-    REQ_ACK = "\x03"         # ACK to client that message handled
-    NO_SUCH_WORKER = "\x04"  # Message to client that no such worker exists
+    READY = '\x01'           # Signals worker is ready
+    HEARTBEAT = '\x02'       # Signals worker heartbeat
+    REQ_ACK = '\x03'         # ACK to client that message handled
+    NO_SUCH_WORKER = '\x04'  # Message to client that no such worker exists
     RPC = '\x05'             # The message is an RPC response
     ALERT = '\0x06'          # The message is an alert (an M&C Message equiv.)
     SAMPLE = '\0x07'         # The message is a data sample publication
     LOG = '\0x08'            # The message is a log message
-    QUIT = "\x10"            # Kill the worker.
-    KILL_WORKERS = "\x11"    # tells router to kill all connected workers.
+    QUIT = '\x10'            # Kill the worker.
+    KILL_WORKERS = '\x11'    # tells router to kill all connected workers.
+    GET_HOSTS = '\x12'       # Reports the hostnames of all connected workers.
 
     # endpoints
     FRONTEND_SERVER_URL = "tcp://*:5555"

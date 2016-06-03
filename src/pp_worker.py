@@ -28,6 +28,7 @@
 
 import time
 import zmq
+from socket import gethostname
 import logging as log
 from PyProximity import PP_VALS as PPP
 from PyProximity import PyProximityException
@@ -49,6 +50,8 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
 
     """
 
+    hostname = gethostname()
+
     def worker_socket(id, context, poller):
         if not id:
             raise PyProximityException("id passed to worker is invalid: '%s'"
@@ -58,7 +61,7 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
         worker.setsockopt(zmq.IDENTITY, id)
         poller.register(worker, zmq.POLLIN)
         worker.connect("tcp://localhost:5556")
-        worker.send(PPP.READY)
+        worker.send_multipart([PPP.READY, hostname])
         return worker
 
     def worker():
@@ -160,8 +163,8 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
 
             if time.time() > heartbeat_at:
                 heartbeat_at = time.time() + PPP.HEARTBEAT_INTERVAL
-                log.debug("%s - I: Worker heartbeat" % id)
-                router_clnt.send(PPP.HEARTBEAT)
+                log.debug("%s@%s - I: Worker heartbeat" % (id, hostname))
+                router_clnt.send_multipart([PPP.HEARTBEAT, hostname])
 
         worker_ctl.setsockopt(zmq.LINGER, 0)
         worker_ctl.close()
