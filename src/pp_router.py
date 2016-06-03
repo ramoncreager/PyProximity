@@ -39,6 +39,7 @@
 
 import time
 import zmq
+import json
 import logging as log
 
 from PyProximity import PP_VALS as PPP
@@ -81,14 +82,17 @@ class WorkerQueue(object):
         address, worker = self.queue.popitem(False)
         return address
 
-    def worker_hosts(self):
-        result = '('
+    def get_host(self, address):
+        if address in self.queue:
+            return self.queue[address].hostname
+        return 'unknown'
+
+    def get_hosts(self):
+        result = list()
 
         for w in self.queue:
-            pair = '("%s", "%s")' % (w, self.queue[w].hostname)
-            result += pair
+            result.append([w, self.queue[w].hostname])
 
-        result += ')'
         return result
 
 
@@ -162,6 +166,9 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
 
                 pending_requests.pop(w)
 
+    internal_protocols = (PPP.READY, PPP.HEARTBEAT, PPP.GET_HOSTS,
+                          PPP.ALERT, PPP.SAMPLE, PPP.LOG)
+
     while True:
         socks = dict(poller.poll(PPP.HEARTBEAT_INTERVAL * 1000))
 
@@ -169,7 +176,7 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
         if socks.get(backend) == zmq.POLLIN:
             # Use worker address for LRU routing
             frames = backend.recv_multipart()
-            log.info("Backend: %s", frames)
+            log.info("Backend - frames: %s", frames)
 
             if not frames:
                 continue
@@ -178,33 +185,46 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
             # Validate control message, or return reply to client
             msg = frames[1:]
 
-            if len(msg) <= 2:
-                if msg[0] not in (PPP.READY, PPP.HEARTBEAT, PPP.GET_HOSTS):
-                    log.error("Backend: Invalid message: '%s' from worker %s",
-                              address, str(frames))
-                elif msg[0] in (PPP.READY, PPP.HEARTBEAT):
-                    log.debug("Backend: Got message %s from worker %s",
-                              msg, address)
-                    backend.send_multipart([address, PPP.HEARTBEAT])
-                    workers.ready(Worker(address, msg[1]))
-                elif msg[0] == PPP.GET_HOSTS:
-                    hosts = workers.worker_hosts()
-                    backend.send_multipart([address, PPP.GET_HOSTS, hosts])
-            else:
-                msg_type = msg[-2]
-
-                if msg_type == PPP.RPC:
-                    log.debug("Frontend: Sending to client %s", msg)
-                    frontend.send_multipart(msg)
-                    pending_pop([address], False)
-                    workers.ready(Worker(address))
-                elif msg_type == PPP.ALERT \
-                        or msg_type == PPP.SAMPLE \
-                        or msg_type == PPP.LOG:
-                    log.debug('Publishing message %s', msg)
-                    pub.send_multipart(msg)
+            try:
+                if len(msg) <= 3:
+                    if msg[0] not in internal_protocols:
+                        log.error(
+                            "Backend: Invalid message: '%s' from worker %s",
+                            address, str(frames))
+                    elif msg[0] in (PPP.READY, PPP.HEARTBEAT):
+                        log.debug("Backend: Got message %s from worker %s",
+                                  msg, address)
+                        backend.send_multipart([address, PPP.HEARTBEAT])
+                        workers.ready(Worker(address, msg[1]))
+                    elif msg[0] == PPP.GET_HOSTS:
+                        hosts = json.dumps(workers.get_hosts())
+                        backend.send_multipart([address, PPP.GET_HOSTS, hosts])
+                    elif msg[0] == PPP.ALERT \
+                            or msg[0] == PPP.SAMPLE \
+                            or msg[0] == PPP.LOG:
+                        pub.send_multipart(msg[1:])
                 else:
-                    log.warning("Backend: Unknown message type %s", msg)
+                    msg_type = msg[-2]
+                    log.debug("Message from Worker. Type: %s, %s",
+                              msg_type, msg)
+
+                    if msg_type == PPP.RPC:
+                        log.debug("Frontend: Sending to client %s", msg)
+                        frontend.send_multipart(msg)
+                        pending_pop([address], False)
+
+                        # rpc calls don't send the hostname, only
+                        # heartbeat does. So obtain previously cached
+                        # hostname.
+                        hostname = workers.get_host(address)
+                        workers.ready(Worker(address, hostname))
+                    else:
+                        log.warning("Backend: Unknown message type %s", msg)
+            except IndexError as e:
+                # This will happen if there are version mismatches
+                # between worker and router which result in having the
+                # right protocol, but the wrong number of frames.
+                log.exception("Protocol error: %s", e)
 
             # Send heartbeats to idle workers if it's time
             if time.time() >= heartbeat_at:
@@ -235,6 +255,10 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
                     frontend.send_multipart(
                         [frames[0], id, PPP.NO_SUCH_WORKER])
                     log.warning('%s: NO_SUCH_WORKER', id)
+            elif flen == 2:
+                if frames[1] == PPP.GET_HOSTS:
+                    frames.append(json.dumps(workers.get_hosts()))
+                    frontend.send_multipart(frames)
 
         if socks.get(pipe) == zmq.POLLIN:
             msg = pipe.recv_multipart()

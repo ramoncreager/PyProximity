@@ -1,5 +1,4 @@
 ######################################################################
-#
 #  simple_proxy.py -- Implements simple proxy classes to enable an
 #  object to be proxied via ZMQ and JSON, with a direct, simple
 #  REQ/REP pattern. Currently only methods are proxied. Methods that
@@ -190,6 +189,22 @@ class ProxyServer(object):
 
     def run_loop(self, watchdogfn=None):
         '''The main loop that services the proxy.'''
+        raise PyProximityException("Unimplemented base class function called!")
+
+    def publish(self, code, key, val):
+        '''The publisher function. Publishes over self._publish'''
+        raise PyProximityException("Unimplemented base class function called!")
+
+    def sample(self, key, val):
+        '''Publishes a sampler'''
+        raise PyProximityException("Unimplemented base class function called!")
+
+    def message(self, key, val):
+        '''Publishes a sampler'''
+        raise PyProximityException("Unimplemented base class function called!")
+
+    def log(self, key, val):
+        '''Publishes a sampler'''
         raise PyProximityException("Unimplemented base class function called!")
 
     # See
@@ -438,6 +453,22 @@ class PPPProxyServer(ProxyServer):
         self.ctrl_url = "ipc:///tmp/worker_ctl_" + self.id
         self.exit_flag = False
         self._sock_type = zmq.DEALER
+        self._publish = self.ctx.socket(zmq.PUSH)
+        self._publish.connect(self.worker_reply)
+
+    def publish(self, code, key, val):
+        '''Publishes a value 'val', along with its publication key 'key'.'''
+        frames = [code, key, self.encoder.encode(val)]
+        self._publish.send_multipart(frames)
+
+    def sample(self, key, val):
+        self.publish(PP.SAMPLE, key, val)
+
+    def message(self, key, val):
+        self.publish(PP.ALERT, key, val)
+
+    def log(self, key, val):
+        self.publish(PP.LOG, key, val)
 
     def run_loop(self, watchdogfn=None):
         """
@@ -452,13 +483,17 @@ class PPPProxyServer(ProxyServer):
 
         try:
             worker = create_worker(self.id,
+                                   self.url,
                                    self.worker_request,
                                    self.worker_reply,
                                    self.ctrl_url)
 
             Thread(target=worker).start()
+            # requests from the worker thread come over this socket
             in_chan = self.ctx.socket(zmq.PULL)
+            # work results go out to the worker on over this socket
             out_chan = self.ctx.socket(zmq.PUSH)
+            # loop control happens over this socket.
             pipe = self.ctx.socket(zmq.PULL)
             poller = zmq.Poller()
             poller.register(in_chan, zmq.POLLIN)
@@ -470,7 +505,7 @@ class PPPProxyServer(ProxyServer):
             while not done:
                 try:
                     socks = dict(poller.poll(1000))
-                    # request from worker
+                    # work request from worker
                     if socks.get(in_chan) == zmq.POLLIN:
                         frames = in_chan.recv_multipart()
                         log.debug("Proxy got message: %s", frames)
@@ -514,7 +549,7 @@ class PPPProxyServer(ProxyServer):
             log.exception(e)
 
             # could be a CTRL-C, requesting termination
-            if "Interrupted system call" not in err:
+            if "Interrupted system call" not in e:
                 pass  # Hmm, should do something on ZMQ error
 
         except PyProximityException as e:

@@ -34,7 +34,8 @@ from PyProximity import PP_VALS as PPP
 from PyProximity import PyProximityException
 
 
-def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
+def create_worker(identity, broker_url,
+                  req_url, rep_url, ctrl_url, context=None):
     """Creates a worker, closing over 'identity', 'req_chan', 'req_chan',
        'context'.
 
@@ -60,7 +61,7 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
         worker = context.socket(zmq.DEALER)
         worker.setsockopt(zmq.IDENTITY, id)
         poller.register(worker, zmq.POLLIN)
-        worker.connect("tcp://localhost:5556")
+        worker.connect(broker_url)
         worker.send_multipart([PPP.READY, hostname])
         return worker
 
@@ -84,9 +85,9 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
         while True:
             socks = dict(poller.poll(PPP.HEARTBEAT_INTERVAL * 1000))
 
-            ##############################
+            #############################################
             # A request from the broker:
-            ##############################
+            #############################################
             if socks.get(router_clnt) == zmq.POLLIN:
                 #  Get message
                 #  - 3-part envelope + content -> request
@@ -121,17 +122,17 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
 
                 interval = PPP.INTERVAL_INIT
 
-            ##############################
-            # A result from the work code:
-            ##############################
+            #############################################
+            # A result from the work code (pp_proxy.py):
+            #############################################
             elif socks.get(work_result) == zmq.POLLIN:
                 frames = work_result.recv_multipart()
                 log.debug("WORKER - I: Received result! %s", frames)
                 router_clnt.send_multipart(frames)
 
-            ##############################
-            # A request from the work code:
-            ##############################
+            #############################################
+            # A request from the work code (pp_proxy.py):
+            #############################################
             elif socks.get(worker_ctl) == zmq.POLLIN:
                 msg = worker_ctl.recv()
 
@@ -140,9 +141,9 @@ def create_worker(identity, req_url, rep_url, ctrl_url, context=None):
                     worker_ctl.send(PPP.QUIT)
                     break
 
-            ##############################
+            #############################################
             # timeout
-            ##############################
+            #############################################
             else:
                 liveness -= 1
                 if liveness == 0:
