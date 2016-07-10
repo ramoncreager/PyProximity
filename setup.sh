@@ -1,1 +1,1 @@
-export PYTHONPATH=/home/ramon/rc/Python:$PYTHONPATH
+export PYTHONPATH=/export/home/ajax/rcreager/rc/btl/src:$PYTHONPATH

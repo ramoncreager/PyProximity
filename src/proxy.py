@@ -542,6 +542,8 @@ class PPPProxyServer(ProxyServer):
                             done = True
                 except msgpack.exceptions.ExtraData as e:
                     log.exception(e)
+                except TypeError as e:
+                    log.exception(e)
                 except:
                     log.error("Unknown exception in proxy.py")
 
