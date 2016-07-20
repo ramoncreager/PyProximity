@@ -143,7 +143,7 @@ class ProxyServer(object):
             kwargs = message['kwargs']
             return proc(*args, **kwargs)
         except:
-            return {'EXCEPTION': self.formatExceptionInfo(10)}
+            return (False, 'EXCEPTION', self.formatExceptionInfo(10))
 
     def formatExceptionInfo(self, maxTBlevel=5):
         """Obtains information from the last exception thrown and extracts
@@ -185,7 +185,7 @@ class ProxyServer(object):
             return exported_funcs
         except KeyError, e:
 
-            return ["Interface error", str(e)]
+            return ("Interface error", str(e))
 
     def run_loop(self, watchdogfn=None):
         '''The main loop that services the proxy.'''
