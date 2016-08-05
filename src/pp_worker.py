@@ -106,7 +106,9 @@ def create_worker(identity, broker_url,
                         log.debug("%s: Queue heartbeat", id)
                         liveness = PPP.HEARTBEAT_LIVENESS
                     elif frames[0] == PPP.QUIT:
-                        log.info("%s: Queue terminating", id)
+                        log.info("%s: Queue terminating, request from Broker",
+                                 id)
+                        work_request.send(PPP.QUIT)
                         break
                     else:
                         reply = b"%s: Did not understand '%s'" % (id, frames)
@@ -137,7 +139,8 @@ def create_worker(identity, broker_url,
                 msg = worker_ctl.recv()
 
                 if msg == PPP.QUIT:
-                    log.debug("%s - I: Queue terminating" % id)
+                    log.debug("%s - I: Queue terminating, request from code"
+                              % id)
                     worker_ctl.send(PPP.QUIT)
                     break
 

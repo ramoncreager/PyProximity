@@ -508,6 +508,13 @@ class PPPProxyServer(ProxyServer):
                     # work request from worker
                     if socks.get(in_chan) == zmq.POLLIN:
                         frames = in_chan.recv_multipart()
+
+                        if len(frames) == 1 and frames[0] == PP.QUIT:
+                            log.info("ProxyServer terminating "
+                                     "by request from worker")
+                            done = True
+                            continue
+
                         log.debug("Proxy got message: %s", frames)
                         message = self.encoder.decode(frames.pop())
                         # for router, tell it that this is an  RPC response.
@@ -526,14 +533,18 @@ class PPPProxyServer(ProxyServer):
                             frames.append(packed)
                             out_chan.send_multipart(frames)
 
+                    # control pipe from proxied code:
                     if socks.get(pipe) == zmq.POLLIN:
                         message = pipe.recv()
+                        log.debug("Control pipe got %s", message)
 
                         if message == PP.QUIT:
-                            log.info("ProxyServer terminating.")
+                            log.info("ProxyServer terminating "
+                                     "by request from proxied code")
+                            # Tell worker to quit as well.
                             wctl = self.ctx.socket(zmq.REQ)
                             wctl.connect(self.ctrl_url)
-                            wctl.send(message)
+                            wctl.send(PP.QUIT)
                             rep = wctl.recv()
 
                             if rep == PP.QUIT:
