@@ -998,6 +998,7 @@ class PPPProxyClient(ProxyClient):
                             % (self._id, self._url))
                 else:
                     reply = frames.pop()
+                    log.debug("REPLY = %s", reply)
 
                     if type(reply) == dict and 'EXCEPTION' in reply:
                         if 'KeyError' in reply['EXCEPTION']:
@@ -1015,10 +1016,11 @@ class PPPProxyClient(ProxyClient):
                        and reply['proc'] == msg['proc']:
                         return reply.pop('return')
                     else:
-                        raise PyProximityException(
-                            "%s: Mismatched response. Router @ %s\n"
-                            "sent: %s\nreceived: %s"
-                            % (self._id, self._url,  str(msg), str(reply)))
+                        continue
+                        # raise PyProximityException(
+                        #     "%s: Mismatched response. Router @ %s\n"
+                        #     "sent: %s\nreceived: %s"
+                        #     % (self._id, self._url,  str(msg), str(reply)))
             else:
                 waited += 1000
 
