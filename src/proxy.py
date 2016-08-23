@@ -999,8 +999,9 @@ class PPPProxyClient(ProxyClient):
                 else:
                     reply = frames.pop()
                     log.debug("REPLY = %s", reply)
+                    is_dict = type(reply) == dict
 
-                    if type(reply) == dict and 'EXCEPTION' in reply:
+                    if is_dict and 'EXCEPTION' in reply:
                         if 'KeyError' in reply['EXCEPTION']:
                             # check to see if we're up-to-date with
                             # the server. If attribute exists here but
@@ -1012,15 +1013,9 @@ class PPPProxyClient(ProxyClient):
                         raise PyProximityException(reply['EXCEPTION'])
 
                     # confirm that this is the expected result
-                    if reply['name'] == msg['name'] \
+                    if is_dict and reply['name'] == msg['name'] \
                        and reply['proc'] == msg['proc']:
                         return reply.pop('return')
-                    else:
-                        continue
-                        # raise PyProximityException(
-                        #     "%s: Mismatched response. Router @ %s\n"
-                        #     "sent: %s\nreceived: %s"
-                        #     % (self._id, self._url,  str(msg), str(reply)))
             else:
                 waited += 1000
 
