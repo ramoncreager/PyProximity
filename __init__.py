@@ -25,6 +25,8 @@
 #
 ######################################################################
 
+import logging
+from logging import NullHandler
 
 from src.pp_config import PP_VALS
 from src.pp_exception import PyProximityException
@@ -36,6 +38,8 @@ from src.pp_encoder import decode_datetime
 from src.proxy import REQREPProxyClient, REQREPProxyServer
 from src.proxy import PPPProxyClient, PPPProxyServer
 from src.pp_utils import router_ctl, client_msg, create_publisher
+
+logging.getLogger(__name__).addHandler(NullHandler())
 
 __all__ = [
     'Encoder',
