@@ -29,9 +29,11 @@
 import time
 import zmq
 from socket import gethostname
-import logging as log
+import logging
 from PyProximity import PP_VALS as PPP
 from PyProximity import PyProximityException
+
+log = logging.getLogger('pp_worker')
 
 
 def create_worker(identity, broker_url,

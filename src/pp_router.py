@@ -40,10 +40,12 @@
 import time
 import zmq
 import json
-import logging as log
+import logging
 
 from PyProximity import PP_VALS as PPP
 from collections import OrderedDict
+
+log = logging.getLogger('pp_router')
 
 
 class Worker(object):

@@ -62,7 +62,7 @@ import thread
 import time
 import datetime
 import msgpack
-import logging as log
+import logging
 
 from zmq.error import ZMQError
 from threading import Thread
@@ -70,6 +70,8 @@ from PyProximity import JSONEncoder
 from PyProximity import PyProximityException
 from PyProximity import PP_VALS as PP
 from PyProximity import create_worker
+
+log = logging.getLogger('proxy')
 
 ######################################################################
 # ProxyServer base class
