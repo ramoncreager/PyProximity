@@ -38,6 +38,7 @@ from src.pp_encoder import decode_datetime
 from src.proxy import REQREPProxyClient, REQREPProxyServer
 from src.proxy import PPPProxyClient, PPPProxyServer
 from src.pp_utils import router_ctl, client_msg, create_publisher
+from src.pp_logging_handler import PPHandler
 
 logging.getLogger(__name__).addHandler(NullHandler())
 
@@ -57,5 +58,6 @@ __all__ = [
     'create_worker',
     'decode_datetime',
     'encode_datetime',
-    'router_ctl'
+    'router_ctl',
+    'PPHandler'
 ]
