@@ -184,9 +184,6 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
 
                 pending_requests.pop(w)
 
-    internal_protocols = (PPP.READY, PPP.HEARTBEAT, PPP.GET_HOSTS,
-                          PPP.ALERT, PPP.SAMPLE, PPP.LOG)
-
     while not broker_done:
         try:
             socks = dict(poller.poll(PPP.HEARTBEAT_INTERVAL * 1000))
@@ -200,53 +197,56 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
                 if not frames:
                     continue
 
-                address = frames[0]
-                # Validate control message, or return reply to client
-                msg = frames[1:]
+                num_frames = len(frames)
+
+                # 2 cases. The first is unsolicited messages from the
+                # worker, (heartbeat, get hosts, etc.) the second is
+                # for responses from the worker to requests from a
+                # client. The message in that case will contain extra
+                # routing information from the client.
+                if num_frames <= 4:
+                    address = frames[0]  # Player name
+                    proto = frames[1]    # Proto number
+                    msg = frames[2:]     # rest of message.
+                else:
+                    address = frames[2]
+                    proto = frames[3]
+                    msg = frames[1:]     # include the routing info.
 
                 try:
-                    if len(msg) <= 3:
-                        if msg[0] not in internal_protocols:
-                            log.error(
-                                "Backend: Invalid message: '%s' "
-                                "from worker %s",
-                                address, str(frames))
-                        elif msg[0] in (PPP.READY, PPP.HEARTBEAT):
-                            log.debug("Backend: Got message %s from worker %s",
-                                      msg, address)
-                            backend.send_multipart([address, PPP.HEARTBEAT])
-                            workers.ready(Worker(address, msg[1]), pub)
-                        elif msg[0] == PPP.GET_HOSTS:
-                            hosts = json.dumps(workers.get_hosts())
-                            backend.send_multipart(
-                                [address, PPP.GET_HOSTS, hosts])
-                        elif msg[0] == PPP.ALERT \
-                                or msg[0] == PPP.SAMPLE \
-                                or msg[0] == PPP.LOG:
-                            pub.send_multipart(msg[1:])
+                    if proto in (PPP.ALERT, PPP.SAMPLE, PPP.LOG):
+                        pub.send_multipart(msg)
+
+                    elif proto == PPP.GET_HOSTS:
+                        hosts = json.dumps(workers.get_hosts())
+                        backend.send_multipart(
+                            [address, PPP.GET_HOSTS, hosts])
+
+                    elif proto in (PPP.READY, PPP.HEARTBEAT):
+                        log.debug("Backend: Got message %s from worker %s",
+                                  msg, address)
+                        backend.send_multipart([address, PPP.HEARTBEAT])
+                        workers.ready(Worker(address, msg[0]), pub)
+
+                    elif proto == PPP.RPC:
+                        log.debug("Frontend: Sending to client %s", msg)
+                        frontend.send_multipart(msg)
+                        pending_pop([address], False)
+
+                        # rpc calls don't send the hostname, only
+                        # heartbeat does. So obtain previously cached
+                        # hostname.
+                        hostname = workers.get_host(address)
+                        workers.ready(Worker(address, hostname), pub)
                     else:
-                        msg_type = msg[-2]
-                        log.debug("Message from Worker. Type: %s, %s",
-                                  msg_type, msg)
+                        log.warning("Backend: Unknown message type. "
+                                    "frames = %s", frames)
 
-                        if msg_type == PPP.RPC:
-                            log.debug("Frontend: Sending to client %s", msg)
-                            frontend.send_multipart(msg)
-                            pending_pop([address], False)
-
-                            # rpc calls don't send the hostname, only
-                            # heartbeat does. So obtain previously cached
-                            # hostname.
-                            hostname = workers.get_host(address)
-                            workers.ready(Worker(address, hostname), pub)
-                        else:
-                            log.warning(
-                                "Backend: Unknown message type %s", msg)
                 except IndexError as e:
                     # This will happen if there are version mismatches
                     # between worker and router which result in having the
                     # right protocol, but the wrong number of frames.
-                    log.exception("Protocol error: %s", e)
+                    log.exception("Protocol error: %s, message %s", e, frames)
 
                 # Send heartbeats to idle workers if it's time
                 if time.time() >= heartbeat_at:
