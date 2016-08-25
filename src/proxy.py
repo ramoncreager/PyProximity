@@ -65,7 +65,7 @@ import msgpack
 import logging
 
 from zmq.error import ZMQError
-from threading import Thread
+from threading import Thread, Lock
 from PyProximity import JSONEncoder
 from PyProximity import PyProximityException
 from PyProximity import PP_VALS as PP
@@ -104,6 +104,7 @@ class ProxyServer(object):
         self.pipe_url = "inproc://ctrl_pipe" + '.' + self.id
         self.interfaces = {}
         self.ctx = ctx
+        self.pub_mutex = Lock()
         log.info(URL)
 
     def _send(self, sock, msg):
@@ -461,7 +462,10 @@ class PPPProxyServer(ProxyServer):
     def publish(self, code, key, val):
         '''Publishes a value 'val', along with its publication key 'key'.'''
         frames = [code, key, self.encoder.encode(val)]
+        # serialize access, in case multiple threads are publishing.
+        self.pub_mutex.acquire()
         self._publish.send_multipart(frames)
+        self.pub_mutex.release()
 
     def sample(self, key, val):
         self.publish(PP.SAMPLE, key, val)
@@ -531,6 +535,7 @@ class PPPProxyServer(ProxyServer):
                         else:
                             ret_msg = self.dispatch(message)
                             message['return'] = ret_msg
+                            log.debug('return message = %s', message)
                             packed = self.encoder.encode(message)
                             frames.append(packed)
                             out_chan.send_multipart(frames)
