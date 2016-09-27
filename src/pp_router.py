@@ -292,7 +292,10 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
                     log.info("Router is quitting.")
                     return
                 elif msg[0] == PPP.KILL_WORKERS:
+                    log.info('Received PPP.KILL_WORKERS')
+
                     for w in workers.queue:
+                        log.info('Killing worker %s', w)
                         backend.send_multipart([w, PPP.QUIT])
 
                     reply = b"All workers sent the QUIT message"

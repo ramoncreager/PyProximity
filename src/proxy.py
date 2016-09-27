@@ -292,9 +292,16 @@ class REQREPProxyServer(ProxyServer):
         packed = self.encoder.encode(msg)
         return sock.send(packed)
 
-    def _recv(self, sock):
-        packed = sock.recv()
-        return self.encoder.decode(packed)
+    def _recv(self, sock, timeout=5000):
+        poller = zmq.Poller()
+        poller.register(sock, zmq.POLLIN)
+        socks = dict(poller.poll(timeout))
+
+        if socks.get(sock) == zmq.POLLIN:
+            packed = sock.recv()
+            return self.encoder.decode(packed)
+
+        return None
 
     def _recover(self, e):
         error = "Encoder: " + str(e)
@@ -575,6 +582,7 @@ class PPPProxyServer(ProxyServer):
         except PyProximityException as e:
             log.exception(e)
 
+        log.info('PPPProxyServer exiting main loop and terminating.')
         self.exit_flag = True
 
     def quit_loop(self):
