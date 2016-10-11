@@ -282,15 +282,28 @@ def broker(front_url=None, back_url=None, ctrl_url=None, pub_url=None):
                         frames.append(json.dumps(workers.get_hosts()))
                         frontend.send_multipart(frames)
 
+            # handle activity from the control pipe
             if socks.get(pipe) == zmq.POLLIN:
                 msg = pipe.recv_multipart()
                 log.debug("PIPE - got %s", msg)
 
                 if msg[0] == PPP.QUIT:
-                    reply = b"Router is quitting."
-                    pipe.send(reply)
-                    log.info("Router is quitting.")
-                    return
+                    if len(msg) > 1:
+                        w = msg[1]
+
+                        if workers.queue.get(w):
+                            log.info('Killing worker %s', w)
+                            backend.send_multipart([worker, PPP.QUIT])
+                            reply = b"worker %s send the QUIT message" % w
+                        else:
+                            reply = b"worker %s is not running!" % w
+
+                        pipe.send(reply)
+                    else:
+                        reply = b"Router is quitting."
+                        pipe.send(reply)
+                        log.info("Router is quitting.")
+                        return
                 elif msg[0] == PPP.KILL_WORKERS:
                     log.info('Received PPP.KILL_WORKERS')
 
